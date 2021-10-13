@@ -23,33 +23,35 @@ func Start(c *Config) error {
 		return err
 	}
 
-	log.Printf("Authorized on account %s", bot.Self.UserName)
+	log.Printf("Telegram	->	Authorized on account	%s", bot.Self.UserName)
 
 	msg, err := checkWebhook(bot, c)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("Webhook cheсk: %s", msg)
+	log.Printf("Telegram	->	Webhook cheсk:	%s", msg)
 
 	updates := bot.ListenForWebhook("/" + bot.Token)
 
 	go http.ListenAndServe(":"+c.Port, nil)
 
 	for update := range updates {
-		log.Printf("%+v\n", update)
+		// log.Printf("%+v\n", update)
+		go handleUpdate(bot, &update)
 	}
 
 	return nil
 }
 
 func initBot() (*tgbotapi.BotAPI, error) {
+
 	bot, err := tgbotapi.NewBotAPI(TOKEN)
 	if err != nil {
 		return nil, err
 	}
 
-	bot.Debug = true
+	// bot.Debug = true
 
 	return bot, nil
 }
@@ -76,4 +78,23 @@ func checkWebhook(bot *tgbotapi.BotAPI, c *Config) (string, error) {
 	}
 
 	return "new webhook installed", nil
+}
+
+func handleUpdate(bot *tgbotapi.BotAPI, u *tgbotapi.Update) {
+	if u.Message.IsCommand() {
+		msg := tgbotapi.NewMessage(u.Message.Chat.ID, "")
+		switch u.Message.Command() {
+		case "help":
+			msg.Text = "Напиши /привет или /статус."
+		case "привет":
+			msg.Text = "Привет :)"
+		case "статус":
+			msg.Text = "Все ок!"
+		case "withArgument":
+			msg.Text = "Ты добавил к команде аргумент: " + u.Message.CommandArguments()
+		default:
+			msg.Text = "Не знаю такой команды"
+		}
+		bot.Send(msg)
+	}
 }
