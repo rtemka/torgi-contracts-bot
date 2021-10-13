@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	APP_URL string = ""
+	APP_URL string = " https://torgi-contracts-bot.herokuapp.com/"
 )
 
 func main() {
