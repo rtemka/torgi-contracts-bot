@@ -70,7 +70,7 @@ func checkWebhook(bot *tgbotapi.BotAPI, c *Config) (string, error) {
 		return "webhook already set and available", err
 	}
 
-	_, err = bot.SetWebhook(tgbotapi.NewWebhook(c.AppURL + ":" + c.Port + "/" + bot.Token))
+	_, err = bot.SetWebhook(tgbotapi.NewWebhook(c.AppURL + "/" + bot.Token))
 	if err != nil {
 		return "", err
 	}
