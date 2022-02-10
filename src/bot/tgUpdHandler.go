@@ -29,7 +29,8 @@ const (
 		"\n\n\t/t значит 'today' т.е 'сегодня'.\n\tПоказывает все ожидаемые сегодня торги и заявки, которые нужно подать" +
 		"\n\nОпции:\n\n\t-a, --auction\t показывает только аукционы\n\t-g, --go\t показывает только заявки"
 	futureHelpMsg = "Имя:\n\t/f\nИспользование:\n\t/f\t[опции]...\nОписание:" +
-		"\n\t/f значит 'future' т.е 'будущее'.\n\tПоказывает все будущие аукционы и заявки, а также агрегированные суммы обеспечения по организации\n" +
+		"\n\t/f значит 'future' т.е 'будущее'.\n\tПоказывает все будущие аукционы и заявки," +
+		"\nа также агрегированные по региону и типу закупки суммы обеспечения\n" +
 		"Опции:\n\t-a, --auction\t показывает только аукционы\n\t-g, --go\t показывает только заявки" +
 		"\n\t-m, --money\t показывает только суммы обеспечения" +
 		"\n\t-d, --days=[+]NUM\t ограничивает выборку на NUM дней вперед"
@@ -153,7 +154,7 @@ func (t *tgUpdHandler) todayCmdResponse(m *tgbotapi.Message) []string {
 		return []string{errorMsg}
 	}
 
-	return buildMessages(recs, opt)
+	return []string{buildMessage(recs, opt)}
 }
 
 func (t *tgUpdHandler) futureCmdResponse(m *tgbotapi.Message) []string {
@@ -189,12 +190,36 @@ func (t *tgUpdHandler) futureCmdResponse(m *tgbotapi.Message) []string {
 		return []string{errorMsg}
 	}
 
-	return buildMessages(recs, opt)
+	return []string{buildMessage(recs, opt)}
 }
 
 func (t *tgUpdHandler) pastCmdResponse(m *tgbotapi.Message) []string {
+	var (
+		d   int
+		err error
+	)
+	args := m.CommandArguments()
+	opt := botDB.Past
+	days := strings.Contains(args, daysArg) || strings.Contains(args, daysArgLong)
 
-	return nil
+	if days {
+		m := map[string]bool{daysArg: true, daysArgLong: true}
+		args, d, err = parseAndStripOptions(args, m)
+		if err != nil {
+			return []string{errorMsg}
+		}
+	}
+
+	if args != "" {
+		return []string{errorMsg}
+	}
+
+	recs, err := t.qm.Query(opt, d)
+	if err != nil {
+		return []string{errorMsg}
+	}
+
+	return []string{buildMessage(recs, opt)}
 }
 
 func buildMessage(recs []botDB.PurchaseRecord, opt botDB.QueryOpt) string {
@@ -206,17 +231,6 @@ func buildMessage(recs []botDB.PurchaseRecord, opt botDB.QueryOpt) string {
 
 	return b.String()
 }
-
-func buildMessages(recs []botDB.PurchaseRecord, opt botDB.QueryOpt) []string {
-	res := make([]string, 0, len(recs))
-
-	for i := range recs {
-		res = append(res, recs[i].InfoString(opt))
-	}
-
-	return res
-}
-
 func parseAndStripOptions(args string, m map[string]bool) (string, int, error) {
 	var (
 		d   int
@@ -243,117 +257,3 @@ func parseAndStripOptions(args string, m map[string]bool) (string, int, error) {
 
 	return b.String(), d, nil
 }
-
-// func buildMessages(recs []botDB.PurchaseRecord, filter func(p *botDB.PurchaseRecord) (string, bool)) []string {
-// 	res := make([]string, 0, len(recs))
-
-// 	for i := range recs {
-// 		if s, ok := filter(&recs[i]); ok {
-// 			res = append(res, s)
-// 		}
-// 	}
-
-// 	return res
-// }
-
-// func parseAndStripDays(args string) (string, int) {
-// 	i := 0
-// 	if strings.Contains(args, daysArgLong) {
-// 		i = fmt.Sscanf()
-// 		fmt.Sscan()
-// 	}
-
-// 	return args, 0
-// }
-
-// func (t *tgUpdHandler) todayCmdResponse(m *tgbotapi.Message) []string {
-
-// 	var f func(p *botDB.PurchaseRecord) (string, bool)
-
-// 	args := m.CommandArguments()
-
-// 	switch args {
-
-// 	case auctionArg, auctionArgLong:
-// 		f = func(p *botDB.PurchaseRecord) (string, bool) {
-// 			if p.Status != statusAuction && p.Status != statusAuction2 {
-// 				return "", false
-// 			}
-// 			return p.AuctionString(), true
-// 		}
-
-// 	case goingArg, goingArgLong:
-// 		f = func(p *botDB.PurchaseRecord) (string, bool) {
-// 			if p.Status == statusGo {
-// 				return "", false
-// 			}
-// 			return p.ParticipateString(), true
-// 		}
-
-// 	case "":
-// 		f = func(p *botDB.PurchaseRecord) (string, bool) {
-// 			if p.Status == statusAuction || p.Status == statusAuction2 {
-// 				return p.AuctionString(), true
-// 			}
-// 			return p.ParticipateString(), true
-// 		}
-
-// 	default:
-// 		return []string{errorMsg}
-// 	}
-
-// 	recs, err := t.qm.Read(botDB.Today)
-// 	if err != nil {
-// 		return []string{errorMsg}
-// 	}
-
-// 	return buildMessages(recs, f)
-// }
-
-// func (t *tgUpdHandler) futureCmdResponse(m *tgbotapi.Message) []string {
-
-// 	var f func(p *botDB.PurchaseRecord) (string, bool)
-
-// 	args := m.CommandArguments()
-// 	days := false
-// 	if strings.Contains(args, daysArg) || strings.Contains(args, daysArgLong) {
-// 		days = true
-// 	}
-
-// 	switch args {
-
-// 	case auctionArg, auctionArgLong:
-// 		f = func(p *botDB.PurchaseRecord) (string, bool) {
-// 			if p.Status != statusAuction && p.Status != statusAuction2 {
-// 				return "", false
-// 			}
-// 			return p.AuctionString(), true
-// 		}
-
-// 	case goingArg, goingArgLong:
-// 		f = func(p *botDB.PurchaseRecord) (string, bool) {
-// 			if p.Status == statusGo {
-// 				return "", false
-// 			}
-// 			return p.ParticipateString(), true
-// 		}
-
-// 	case "":
-// 		f = func(p *botDB.PurchaseRecord) (string, bool) {
-// 			if p.Status == statusAuction || p.Status == statusAuction2 {
-// 				return p.AuctionString(), true
-// 			}
-// 			return p.ParticipateString(), true
-// 		}
-
-// 	default:
-// 		return []string{errorMsg}
-// 	}
-
-// 	recs, err := t.qm.Read(botDB.Today)
-// 	if err != nil {
-// 		return []string{errorMsg}
-// 	}
-
-// 	return buildMessages(recs, f)
-// }
