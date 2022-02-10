@@ -32,7 +32,6 @@ const (
 		"\n\t/f значит 'future' т.е 'будущее'.\n\tПоказывает все будущие аукционы и заявки, а также агрегированные суммы обеспечения по организации\n" +
 		"Опции:\n\t-a, --auction\t показывает только аукционы\n\t-g, --go\t показывает только заявки" +
 		"\n\t-m, --money\t показывает только суммы обеспечения" +
-		"\n\t-t, --total\t применятся вместе с ключом -m,\n\tпоказывает агрегированные суммы обеспечения по организации" +
 		"\n\t-d, --days=[+]NUM\t ограничивает выборку на NUM дней вперед"
 	pastHelpMsg = "Имя:\n\t/p\nИспользование:\n\t/p\t[опции]...\nОписание:" +
 		"\n\t/p значит 'past' т.е 'прошлое'.\n\tПоказывает результаты прошедших закупок\n" +
@@ -58,8 +57,6 @@ const (
 	goingArgLong   = "--go"
 	moneyArg       = "-m"
 	moneyArgLong   = "--money"
-	totalArg       = "-t"
-	totalArgLong   = "--total"
 	daysArg        = "-d"
 	daysArgLong    = "--days"
 	todayArg       = "-/t"
@@ -167,10 +164,10 @@ func (t *tgUpdHandler) futureCmdResponse(m *tgbotapi.Message) []string {
 	args := m.CommandArguments()
 	opt := botDB.Future
 	days := strings.Contains(args, daysArg) || strings.Contains(args, daysArgLong)
-	total := strings.Contains(args, totalArg) || strings.Contains(args, totalArgLong)
 
-	if days || total {
-		args, d, err = parseAndStripOptions(args)
+	if days {
+		m := map[string]bool{daysArg: true, daysArgLong: true}
+		args, d, err = parseAndStripOptions(args, m)
 		if err != nil {
 			return []string{errorMsg}
 		}
@@ -182,11 +179,7 @@ func (t *tgUpdHandler) futureCmdResponse(m *tgbotapi.Message) []string {
 	case goingArg, goingArgLong:
 		opt = botDB.FutureGo
 	case moneyArg, moneyArgLong:
-		if total {
-			opt = botDB.FutureMoneyTotal
-		} else {
-			opt = botDB.FutureMoney
-		}
+		opt = botDB.FutureMoney
 	default:
 		return []string{errorMsg}
 	}
@@ -224,7 +217,7 @@ func buildMessages(recs []botDB.PurchaseRecord, opt botDB.QueryOpt) []string {
 	return res
 }
 
-func parseAndStripOptions(args string) (string, int, error) {
+func parseAndStripOptions(args string, m map[string]bool) (string, int, error) {
 	var (
 		d   int
 		err error
@@ -233,7 +226,7 @@ func parseAndStripOptions(args string) (string, int, error) {
 	scanner := bufio.NewScanner(strings.NewReader(args))
 	scanner.Split(bufio.ScanWords)
 
-	for next, t := false, ""; scanner.Scan(); next = t == daysArg || t == daysArgLong {
+	for next, t := false, ""; scanner.Scan(); next = m[t] {
 		t = scanner.Text()
 		if next {
 			d, err = strconv.Atoi(t)
@@ -242,7 +235,7 @@ func parseAndStripOptions(args string) (string, int, error) {
 			}
 			continue
 		}
-		if t == daysArg || t == daysArgLong || t == totalArg || t == totalArgLong {
+		if m[t] {
 			continue
 		}
 		b.WriteString(t)

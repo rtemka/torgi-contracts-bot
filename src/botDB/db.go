@@ -348,6 +348,5 @@ const (
 	FutureAuction
 	FutureGo
 	FutureMoney
-	FutureMoneyTotal
 	Past
 )
