@@ -1,67 +1,108 @@
 package bot
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 
+	botDB "trbot/src/botDB"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-const (
-	TOKEN string = "2003091653:AAHHuYqtRHcF2HZoHm3wbRUpaMlu2qEnws8"
-)
-
+// Config is the settigns
+// for the bot instance
 type Config struct {
-	Port   string
-	AppURL string
+	BotName       string
+	Port          string
+	AppURL        string
+	BotToken      string
+	DbUpdateToken string
+	DB            *sql.DB
 }
 
-func Start(c *Config) error {
-	bot, err := initBot()
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Telegram	->	Authorized on account: [%s]", bot.Self.UserName)
-
-	msg, err := checkWebhook(bot, c)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Telegram	->	Webhook cheсk: [%s]", msg)
-
-	updates := bot.ListenForWebhook("/" + bot.Token)
-
-	go http.ListenAndServe(":"+c.Port, nil)
-
-	for update := range updates {
-		log.Printf("Telegram	->	Update received: chatID-[%d], userID-[%s], text[%s]",
-			update.Message.Chat.ID, update.Message.From.UserName, update.Message.Text)
-		// log.Printf("%+v\n", update)
-		go handleUpdate(bot, &update)
-	}
-
-	return nil
+// bot is the main controller
+// over the application logic
+type bot struct {
+	name string
+	api  *tgbotapi.BotAPI
+	dbh  dbUpdateHandler
+	tgh  tgUpdateHandler
 }
 
-func initBot() (*tgbotapi.BotAPI, error) {
+// databaseHandler is the logic responsible
+// for processing incoming updates for the database
+type dbUpdateHandler interface {
+	http.Handler
+}
 
-	bot, err := tgbotapi.NewBotAPI(TOKEN)
+// tgUpdateHandler is the logic responsible for
+// processing incoming telegram updates i.e.
+// responding to the users messages
+type tgUpdateHandler interface {
+	handleUpdate(api *tgbotapi.BotAPI, u *tgbotapi.Update)
+}
+
+func initBot(c *Config) (*bot, error) {
+
+	botAPI, err := tgbotapi.NewBotAPI(c.BotToken)
 	if err != nil {
 		return nil, err
 	}
 
 	// bot.Debug = true
 
-	return bot, nil
+	m := botDB.NewModel(c.DB)
+	dh := newDbHandler(m)
+	uh := newTgUpdHandler(m)
+
+	return &bot{
+		name: c.BotName,
+		api:  botAPI,
+		dbh:  dh,
+		tgh:  uh,
+	}, nil
 }
 
-func checkWebhook(bot *tgbotapi.BotAPI, c *Config) (string, error) {
+// Start creates the bot instance, checks
+// the telegram webhook (if there is none then
+// it tries to install it), register appropriate
+// handlers on endpoints and start to listen for updates
+func Start(c *Config) error {
+	bot, err := initBot(c)
+	if err != nil {
+		return err
+	}
 
-	info, err := bot.GetWebhookInfo()
+	log.Printf("%s: Telegram	->	Authorized on account: [%s]\n", bot.name, bot.api.Self.UserName)
 
+	msg, err := bot.checkWebhook(c)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("%s: Telegram	->	Webhook cheсk: [%s]\n", bot.name, msg)
+
+	updates := bot.api.ListenForWebhook("/" + bot.api.Token)
+
+	http.Handle("/"+c.DbUpdateToken, bot.dbh)
+
+	go http.ListenAndServe(":"+c.Port, nil)
+
+	for update := range updates {
+		log.Printf("%s: Telegram	->	Update received: chatID-[%d], user-[%v], text[%s]\n",
+			bot.name, update.Message.Chat.ID, update.Message.From, update.Message.Text)
+
+		go bot.tgh.handleUpdate(bot.api, &update)
+	}
+
+	return nil
+}
+
+func (bot *bot) checkWebhook(c *Config) (string, error) {
+
+	info, err := bot.api.GetWebhookInfo()
 	if err != nil {
 		return "", err
 	}
@@ -71,34 +112,13 @@ func checkWebhook(bot *tgbotapi.BotAPI, c *Config) (string, error) {
 	}
 
 	if info.IsSet() {
-		return "webhook already set and available", err
+		return "webhook already set and available", nil
 	}
 
-	_, err = bot.SetWebhook(tgbotapi.NewWebhook(c.AppURL + "/" + bot.Token))
+	_, err = bot.api.SetWebhook(tgbotapi.NewWebhook(c.AppURL + "/" + bot.api.Token))
 	if err != nil {
 		return "", err
 	}
 
 	return "new webhook installed", nil
-}
-
-func handleUpdate(bot *tgbotapi.BotAPI, u *tgbotapi.Update) {
-	if u.Message.IsCommand() {
-		msg := tgbotapi.NewMessage(u.Message.Chat.ID, "")
-		switch u.Message.Command() {
-		case "start":
-			msg.Text = "Привет! Оставайся здесь, а я буду писать, когда подписываются контракты и появляются номера."
-		case "help":
-			msg.Text = "Напиши /hi или /status."
-		case "hi":
-			msg.Text = "Привет :)"
-		case "status":
-			msg.Text = "Все ок!"
-		case "withArgument":
-			msg.Text = "Ты добавил к команде аргумент: " + u.Message.CommandArguments()
-		default:
-			msg.Text = "Извини, не знаю такой команды. Попробуй /help"
-		}
-		bot.Send(msg)
-	}
 }

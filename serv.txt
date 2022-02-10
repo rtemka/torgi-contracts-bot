@@ -1,2 +1,0 @@
-https://stackoverflow.com/questions/48919602/accessing-golang-web-server/49024795
-https://stackoverflow.com/questions/47228560/telegram-bot-api-webhooks-with-go-golang-on-heroku
