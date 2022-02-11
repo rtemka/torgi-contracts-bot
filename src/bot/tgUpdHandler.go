@@ -1,8 +1,8 @@
 package bot
 
 import (
-	"bufio"
-	"strconv"
+	"flag"
+	"log"
 	"strings"
 	"trbot/src/botDB"
 
@@ -21,22 +21,23 @@ const (
 
 // command help message
 const (
-	generalHelpMsg = "Доступные команды:\n\n\t/t - аукционы⚔️/заявки🖥️ сегодня" +
-		"\n\t/f - аукционы/заявки/обеспечения в будущем ⏳" +
-		"\n\t/p - результаты прошедших закупок ⚰️" +
-		"\n\nПодробнее о каждой команде: /help -[имя команды]"
-	todayHelpMsg = "Имя:\n\n\t/t\n\nИспользование:\n\n\t/t\t[опции]...\n\nОписание:" +
-		"\n\n\t/t значит 'today' т.е 'сегодня'.\n\tПоказывает все ожидаемые сегодня торги и заявки, которые нужно подать" +
-		"\n\nОпции:\n\n\t-a, --auction\t показывает только аукционы\n\t-g, --go\t показывает только заявки"
-	futureHelpMsg = "Имя:\n\t/f\nИспользование:\n\t/f\t[опции]...\nОписание:" +
-		"\n\t/f значит 'future' т.е 'будущее'.\n\tПоказывает все будущие аукционы и заявки," +
+	generalHelpMsg = "Доступные команды:\n\t" + todayKey + " - аукционы⚔️/заявки🖥️ сегодня" +
+		"\n\t" + futureKey + " - аукционы/заявки/обеспечения в будущем ⏳" +
+		"\n\t" + pastKey + " - результаты прошедших закупок ⚰️" +
+		"\nПодробнее о каждой команде: /" + helpCmd + " -[имя команды]"
+	todayHelpMsg = "Имя:\n\t" + todayKey + "\n\nИспользование:\n\t" + todayKey + "\t[опции]...\n2020-07-16 10:15:06Описание:" +
+		"\n\t" + todayKey + " значит 'today' т.е 'сегодня'.\n\tПоказывает все ожидаемые сегодня торги и заявки, которые нужно подать" +
+		"\nОпции:\n\t-" + auctionKey + ", " + auctionKeyLong + "\t " + auctionKeyUsg + "\n\t-g, --go\t" + goKeyUsg
+	futureHelpMsg = "Имя:\n\t" + futureKey + "\nИспользование:\n\t" + futureKey + "\t[опции]...\nОписание:" +
+		"\n\t" + futureKey + " значит 'future' т.е 'будущее'.\n\tПоказывает все будущие аукционы и заявки," +
 		"\nа также агрегированные по региону и типу закупки суммы обеспечения\n" +
-		"Опции:\n\t-a, --auction\t показывает только аукционы\n\t-g, --go\t показывает только заявки" +
-		"\n\t-m, --money\t показывает только суммы обеспечения" +
-		"\n\t-d, --days=[+]NUM\t ограничивает выборку на NUM дней вперед"
-	pastHelpMsg = "Имя:\n\t/p\nИспользование:\n\t/p\t[опции]...\nОписание:" +
-		"\n\t/p значит 'past' т.е 'прошлое'.\n\tПоказывает результаты прошедших закупок\n" +
-		"Опции:\n\t-d, --days=[+]NUM\t ограничивает выборку на NUM дней назад"
+		"\nОпции:\n\t-" + auctionKey + ", " + auctionKeyLong + "\t " + auctionKeyUsg + "\n\t-g, --go\t" + goKeyUsg +
+		"\n\t-" + moneyKey + ", --" + moneyKeyLong + "\t" + moneyKeyUsg +
+		"\n\t-" + daysKey + ", --" + daysKeyLong + "=NUM\t" + daysKeyUsg + " вперед"
+	pastHelpMsg = "Имя:\n\t" + pastKey + "\nИспользование:\n\t" + pastKey + "\t[опции]...\nОписание:" +
+		"\n\t" + pastKey + " значит 'past' т.е 'прошлое'.\n\tПоказывает результаты прошедших закупок\n" +
+		"\n\t-" + daysKey + ", --" + daysKeyLong + "=NUM\t" + daysKeyUsg + " назад"
+	cmdHelp = "помощь по команде "
 )
 
 // bot command
@@ -50,25 +51,40 @@ const (
 	hiCmd     = "hi"
 )
 
-// bot command argument
+// bot command key
 const (
-	auctionArg     = "-a"
-	auctionArgLong = "--auction"
-	goingArg       = "-g"
-	goingArgLong   = "--go"
-	moneyArg       = "-m"
-	moneyArgLong   = "--money"
-	daysArg        = "-d"
-	daysArgLong    = "--days"
-	todayArg       = "-/t"
-	futureArg      = "-/f"
-	pastArg        = "-/p"
+	auctionKey     = "a"
+	auctionKeyLong = "auction"
+	goKey          = "g"
+	goKeyLong      = "go"
+	moneyKey       = "m"
+	moneyKeyLong   = "money"
+	daysKey        = "d"
+	daysKeyLong    = "days"
+	todayKey       = "/t"
+	futureKey      = "/f"
+	pastKey        = "/p"
+)
+
+// key usage
+const (
+	auctionKeyUsg = "показывает аукционы"
+	goKeyUsg      = "показывает заявки"
+	moneyKeyUsg   = "показывает суммы обеспечения"
+	daysKeyUsg    = "ограничивает выборку на NUM дней"
+)
+
+// amount of command keys
+const (
+	pastCmdKeysNum   = 0
+	todayCmdKeysNum  = 2
+	futureCmdKeysNum = 3
 )
 
 // dbQueryManager is responsible
 // for the retrieving info from database
 type dbQueryManager interface {
-	Query(botDB.QueryOpt, int) ([]botDB.PurchaseRecord, error)
+	Query(int, ...botDB.QueryOpt) ([]botDB.PurchaseRecord, error)
 }
 
 // tgUpdHandler processes incoming telegram updates
@@ -114,146 +130,154 @@ func (t *tgUpdHandler) handleUpdate(api *tgbotapi.BotAPI, u *tgbotapi.Update) {
 
 func (t *tgUpdHandler) helpCmdResponse(m *tgbotapi.Message) []string {
 
-	msg := generalHelpMsg
-
-	args := m.CommandArguments()
+	args := strings.Split(m.CommandArguments(), " ")
 	if len(args) == 0 {
-		return []string{msg}
+		return []string{generalHelpMsg}
 	}
 
-	switch args {
-	case todayArg:
-		msg = todayHelpMsg
-	case futureArg:
-		msg = futureHelpMsg
-	case pastHelpMsg:
-		msg = pastHelpMsg
+	var tf, ff, pf bool
+
+	hCmd := flag.NewFlagSet(helpCmd, flag.ContinueOnError)
+	hCmd.BoolVar(&tf, todayKey, false, cmdHelp+todayKey)
+	hCmd.BoolVar(&ff, futureKey, false, cmdHelp+futureKey)
+	hCmd.BoolVar(&pf, pastKey, false, cmdHelp+pastKey)
+	err := hCmd.Parse(args)
+	if err != nil {
+		log.Println(err)
+		return []string{errorMsg}
+	}
+
+	var msg []string
+
+	switch {
+	case tf:
+		msg = append(msg, todayHelpMsg)
+		fallthrough
+	case ff:
+		msg = append(msg, futureHelpMsg)
+		fallthrough
+	case pf:
+		msg = append(msg, pastHelpMsg)
 	default:
-		msg = invalidArgsMsg
+		msg = []string{generalHelpMsg}
 	}
 
-	return []string{msg}
+	return msg
 }
 
 func (t *tgUpdHandler) todayCmdResponse(m *tgbotapi.Message) []string {
 
-	args := m.CommandArguments()
-	opt := botDB.Today
-
-	switch args {
-	case auctionArg, auctionArgLong:
-		opt = botDB.TodayAuction
-	case goingArg, goingArgLong:
-		opt = botDB.TodayGo
-	default:
-		return []string{errorMsg}
+	args := strings.Split(m.CommandArguments(), " ")
+	if len(args) == 0 {
+		return t.query(0, []botDB.QueryOpt{botDB.Today})
 	}
 
-	recs, err := t.qm.Query(opt, 0)
+	var af, gf bool
+
+	tCmd := flag.NewFlagSet(todayCmd, flag.ContinueOnError)
+	tCmd.BoolVar(&af, auctionKey, false, auctionKeyUsg)
+	tCmd.BoolVar(&gf, goKey, false, goKeyUsg)
+	tCmd.BoolVar(&af, auctionKeyLong, false, auctionKeyUsg)
+	tCmd.BoolVar(&gf, goKeyLong, false, goKeyUsg)
+	err := tCmd.Parse(args)
 	if err != nil {
+		log.Println(err)
 		return []string{errorMsg}
 	}
 
-	return []string{buildMessage(recs, opt)}
+	opts := make([]botDB.QueryOpt, 0, todayCmdKeysNum)
+	switch {
+	case af:
+		opts = append(opts, botDB.TodayAuction)
+		fallthrough
+	case gf:
+		opts = append(opts, botDB.TodayGo)
+	case len(args) > 0:
+		return []string{errorMsg}
+	}
+
+	return t.query(0, opts)
 }
 
 func (t *tgUpdHandler) futureCmdResponse(m *tgbotapi.Message) []string {
-	var (
-		d   int
-		err error
-	)
-	args := m.CommandArguments()
-	opt := botDB.Future
-	days := strings.Contains(args, daysArg) || strings.Contains(args, daysArgLong)
 
-	if days {
-		m := map[string]bool{daysArg: true, daysArgLong: true}
-		args, d, err = parseAndStripOptions(args, m)
-		if err != nil {
-			return []string{errorMsg}
-		}
+	args := strings.Split(m.CommandArguments(), " ")
+	if len(args) == 0 {
+		return t.query(0, []botDB.QueryOpt{botDB.Future})
 	}
 
-	switch args {
-	case auctionArg, auctionArgLong:
-		opt = botDB.FutureAuction
-	case goingArg, goingArgLong:
-		opt = botDB.FutureGo
-	case moneyArg, moneyArgLong:
-		opt = botDB.FutureMoney
+	var af, gf, mf bool
+	var df int
+
+	fCmd := flag.NewFlagSet(futureCmd, flag.ContinueOnError)
+	fCmd.BoolVar(&af, auctionKey, false, auctionKeyUsg)
+	fCmd.BoolVar(&gf, goKey, false, goKeyUsg)
+	fCmd.BoolVar(&af, auctionKeyLong, false, auctionKeyUsg)
+	fCmd.BoolVar(&gf, goKeyLong, false, goKeyUsg)
+	fCmd.BoolVar(&mf, moneyKey, false, moneyKeyUsg)
+	fCmd.BoolVar(&mf, moneyKeyLong, false, moneyKeyUsg)
+	fCmd.IntVar(&df, daysKey, 0, daysKeyUsg)
+	fCmd.IntVar(&df, daysKeyLong, 0, daysKeyUsg)
+	err := fCmd.Parse(args)
+	if err != nil {
+		log.Println(err)
+		return []string{errorMsg}
+	}
+
+	opts := make([]botDB.QueryOpt, 0, futureCmdKeysNum)
+	switch {
+	case af:
+		opts = append(opts, botDB.FutureAuction)
+		fallthrough
+	case gf:
+		opts = append(opts, botDB.FutureGo)
+		fallthrough
+	case mf:
+		opts = append(opts, botDB.FutureMoney)
 	default:
 		return []string{errorMsg}
 	}
 
-	recs, err := t.qm.Query(opt, d)
-	if err != nil {
-		return []string{errorMsg}
-	}
-
-	return []string{buildMessage(recs, opt)}
+	return t.query(df, opts)
 }
 
 func (t *tgUpdHandler) pastCmdResponse(m *tgbotapi.Message) []string {
-	var (
-		d   int
-		err error
-	)
-	args := m.CommandArguments()
-	opt := botDB.Past
-	days := strings.Contains(args, daysArg) || strings.Contains(args, daysArgLong)
 
-	if days {
-		m := map[string]bool{daysArg: true, daysArgLong: true}
-		args, d, err = parseAndStripOptions(args, m)
-		if err != nil {
-			return []string{errorMsg}
-		}
+	args := strings.Split(m.CommandArguments(), " ")
+	if len(args) == 0 {
+		return t.query(0, []botDB.QueryOpt{botDB.Past})
 	}
 
-	if args != "" {
-		return []string{errorMsg}
-	}
+	var df int
 
-	recs, err := t.qm.Query(opt, d)
+	pCmd := flag.NewFlagSet(pastCmd, flag.ContinueOnError)
+	pCmd.IntVar(&df, daysKey, 0, daysKeyUsg)
+	pCmd.IntVar(&df, daysKeyLong, 0, daysKeyUsg)
+	err := pCmd.Parse(args)
 	if err != nil {
+		log.Println(err)
 		return []string{errorMsg}
 	}
 
-	return []string{buildMessage(recs, opt)}
+	return t.query(df, []botDB.QueryOpt{botDB.Past})
 }
 
-func buildMessage(recs []botDB.PurchaseRecord, opt botDB.QueryOpt) string {
+func (t *tgUpdHandler) query(daysLimit int, opts []botDB.QueryOpt) []string {
+	recs, err := t.qm.Query(daysLimit, opts...)
+	if err != nil {
+		log.Println(err)
+		return []string{errorMsg}
+	}
+
+	return []string{buildMessage(recs)}
+}
+
+func buildMessage(recs []botDB.PurchaseRecord) string {
 	var b strings.Builder
 
 	for i := range recs {
-		b.WriteString(recs[i].InfoString(opt))
+		b.WriteString(recs[i].InfoString())
 	}
 
 	return b.String()
-}
-func parseAndStripOptions(args string, m map[string]bool) (string, int, error) {
-	var (
-		d   int
-		err error
-		b   strings.Builder
-	)
-	scanner := bufio.NewScanner(strings.NewReader(args))
-	scanner.Split(bufio.ScanWords)
-
-	for next, t := false, ""; scanner.Scan(); next = m[t] {
-		t = scanner.Text()
-		if next {
-			d, err = strconv.Atoi(t)
-			if err != nil {
-				return b.String(), d, err
-			}
-			continue
-		}
-		if m[t] {
-			continue
-		}
-		b.WriteString(t)
-	}
-
-	return b.String(), d, nil
 }

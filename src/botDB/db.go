@@ -324,7 +324,7 @@ func (m *Model) Delete() error {
 	return nil
 }
 
-func (m *Model) Query(opt QueryOpt, daysCut int) ([]PurchaseRecord, error) {
+func (m *Model) Query(daysLimit int, opts ...QueryOpt) ([]PurchaseRecord, error) {
 
 	return nil, nil
 }
@@ -342,11 +342,11 @@ type QueryOpt int
 const (
 	_ QueryOpt = iota
 	Today
+	Future
+	Past
 	TodayAuction
 	TodayGo
-	Future
 	FutureAuction
 	FutureGo
 	FutureMoney
-	Past
 )

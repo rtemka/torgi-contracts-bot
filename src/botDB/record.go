@@ -47,6 +47,7 @@ type PurchaseRecord struct {
 	Winner               string  `json:"winner,omitempty"`
 	WinnerPrice          float64 `json:"winner_price,omitempty"`
 	Participants         string  `json:"participants,omitempty"`
+	queryOpt             QueryOpt
 }
 
 func (p *PurchaseRecord) truncNum() string {
@@ -56,8 +57,10 @@ func (p *PurchaseRecord) truncNum() string {
 	return p.RegistryNumber[len(p.RegistryNumber)-3:]
 }
 
-func (p *PurchaseRecord) InfoString(opt QueryOpt) string {
-	switch opt {
+func (p *PurchaseRecord) InfoString() string {
+
+	switch p.queryOpt {
+
 	case TodayAuction:
 		return p.auctionString()
 	case Future, FutureAuction, TodayGo, FutureGo:
@@ -73,7 +76,9 @@ func (p *PurchaseRecord) InfoString(opt QueryOpt) string {
 		return p.pastString()
 	default:
 		return p.generalString()
+
 	}
+
 }
 
 func (p *PurchaseRecord) generalString() string {

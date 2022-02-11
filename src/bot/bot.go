@@ -20,15 +20,17 @@ type Config struct {
 	BotToken      string
 	DbUpdateToken string
 	DB            *sql.DB
+	Chats         map[int64]bool
 }
 
 // bot is the main controller
 // over the application logic
 type bot struct {
-	name string
-	api  *tgbotapi.BotAPI
-	dbh  dbUpdateHandler
-	tgh  tgUpdateHandler
+	name  string
+	api   *tgbotapi.BotAPI
+	dbh   dbUpdateHandler
+	tgh   tgUpdateHandler
+	chats map[int64]bool
 }
 
 // databaseHandler is the logic responsible
@@ -58,10 +60,11 @@ func initBot(c *Config) (*bot, error) {
 	uh := newTgUpdHandler(m)
 
 	return &bot{
-		name: c.BotName,
-		api:  botAPI,
-		dbh:  dh,
-		tgh:  uh,
+		name:  c.BotName,
+		api:   botAPI,
+		dbh:   dh,
+		tgh:   uh,
+		chats: c.Chats,
 	}, nil
 }
 
@@ -75,14 +78,14 @@ func Start(c *Config) error {
 		return err
 	}
 
-	log.Printf("%s: Telegram	->	Authorized on account: [%s]\n", bot.name, bot.api.Self.UserName)
+	log.Printf("%s: Telegram\t->\tAuthorized on account: [%s]\n", bot.name, bot.api.Self.UserName)
 
 	msg, err := bot.checkWebhook(c)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("%s: Telegram	->	Webhook cheсk: [%s]\n", bot.name, msg)
+	log.Printf("%s: Telegram\t->\tWebhook cheсk: [%s]\n", bot.name, msg)
 
 	updates := bot.api.ListenForWebhook("/" + bot.api.Token)
 
@@ -91,8 +94,13 @@ func Start(c *Config) error {
 	go http.ListenAndServe(":"+c.Port, nil)
 
 	for update := range updates {
-		log.Printf("%s: Telegram	->	Update received: chatID-[%d], user-[%v], text[%s]\n",
+		log.Printf("%s: Telegram\t->\tUpdate received: chatID-[%d], user-[%v], text[%s]\n",
 			bot.name, update.Message.Chat.ID, update.Message.From, update.Message.Text)
+
+		if !bot.chats[update.Message.Chat.ID] {
+			log.Printf("chatID-[%d] is not valid... skipped\n", update.Message.Chat.ID)
+			continue
+		}
 
 		go bot.tgh.handleUpdate(bot.api, &update)
 	}
