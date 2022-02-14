@@ -57,23 +57,28 @@ func (p *PurchaseRecord) truncNum() string {
 	return p.RegistryNumber[len(p.RegistryNumber)-3:]
 }
 
-func (p *PurchaseRecord) InfoString() string {
+func (p *PurchaseRecord) String() string {
 
 	switch p.queryOpt {
 
 	case TodayAuction:
 		return p.auctionString()
+
 	case Future, FutureAuction, TodayGo, FutureGo:
 		return p.participateString()
+
 	case Today:
 		if p.Status == statusGo {
 			return p.participateString()
 		}
 		return p.auctionString()
+
 	case FutureMoney:
 		return p.moneyString()
+
 	case Past:
 		return p.pastString()
+
 	default:
 		return p.generalString()
 
@@ -83,10 +88,12 @@ func (p *PurchaseRecord) InfoString() string {
 
 func (p *PurchaseRecord) generalString() string {
 
-	t := p.BiddingDateTime.Format("15:04")
+	tc := p.CollectingDateTime.Format("02.01.2006 15:04")
+	tb := p.BiddingDateTime.Format("02.01.2006 15:04")
 
-	return fmt.Sprintf("[%d] %s %s %s\n⏰: %v | ⬇️: %.2f\n\n",
-		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, t, p.Estimation)
+	return fmt.Sprintf("[%d] %s\n%s %s\n🔝 %.2f\n⏳ %v\n⏰ %v\n💸 %.2f\nСтатус: %s\nПлощадка: %s\n\n",
+		p.PurchaseId, p.RegistryNumber, p.Region, p.PurchaseSubjectAbbr,
+		p.MaxPrice, tc, tb, p.ApplicationGuarantee, p.Status, p.ETP)
 }
 
 func (p *PurchaseRecord) auctionString() string {
@@ -116,11 +123,15 @@ func (p *PurchaseRecord) pastString() string {
 }
 
 func (p *PurchaseRecord) moneyString() string {
+	s := fmt.Sprintf("%s %s \n💸 %.2f\n\n",
+		p.Region, p.PurchaseSubjectAbbr, p.ApplicationGuarantee)
 
-	t := p.BiddingDateTime.Format("15:04")
+	if p.Region == "" {
+		s = fmt.Sprintf("%s 💸 %.2f\n\n",
+			p.PurchaseSubjectAbbr, p.ApplicationGuarantee)
+	}
 
-	return fmt.Sprintf("[%d] %s %s %s\n⏰: %v | ⬇️: %.2f\n\n",
-		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, t, p.Estimation)
+	return s
 }
 
 // setForeignKeys take reference map and check self id

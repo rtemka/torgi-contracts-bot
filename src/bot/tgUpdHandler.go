@@ -2,6 +2,7 @@ package bot
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"strings"
 	"trbot/src/botDB"
@@ -25,7 +26,7 @@ const (
 		"\n\t" + futureKey + " - аукционы/заявки/обеспечения в будущем ⏳" +
 		"\n\t" + pastKey + " - результаты прошедших закупок ⚰️" +
 		"\nПодробнее о каждой команде: /" + helpCmd + " -[имя команды]"
-	todayHelpMsg = "Имя:\n\t" + todayKey + "\n\nИспользование:\n\t" + todayKey + "\t[опции]...\n2020-07-16 10:15:06Описание:" +
+	todayHelpMsg = "Имя:\n\t" + todayKey + "\n\nИспользование:\n\t" + todayKey + "\t[опции]...\nОписание:" +
 		"\n\t" + todayKey + " значит 'today' т.е 'сегодня'.\n\tПоказывает все ожидаемые сегодня торги и заявки, которые нужно подать" +
 		"\nОпции:\n\t-" + auctionKey + ", " + auctionKeyLong + "\t " + auctionKeyUsg + "\n\t-g, --go\t" + goKeyUsg
 	futureHelpMsg = "Имя:\n\t" + futureKey + "\nИспользование:\n\t" + futureKey + "\t[опции]...\nОписание:" +
@@ -49,6 +50,7 @@ const (
 	statusCmd = "status"
 	startCmd  = "start"
 	hiCmd     = "hi"
+	chatCmd   = "chat"
 )
 
 // bot command key
@@ -74,13 +76,6 @@ const (
 	daysKeyUsg    = "ограничивает выборку на NUM дней"
 )
 
-// amount of command keys
-const (
-	pastCmdKeysNum   = 0
-	todayCmdKeysNum  = 2
-	futureCmdKeysNum = 3
-)
-
 // dbQueryManager is responsible
 // for the retrieving info from database
 type dbQueryManager interface {
@@ -101,23 +96,33 @@ func (t *tgUpdHandler) handleUpdate(api *tgbotapi.BotAPI, u *tgbotapi.Update) {
 		return
 	}
 
+	args := strings.Split(u.Message.CommandArguments(), " ")
+	flags, err := parseFlags(args)
+	if err != nil {
+		log.Println(err)
+		api.Send(tgbotapi.NewMessage(u.Message.Chat.ID, errorMsg))
+		return
+	}
+
 	var msgs []string
 
 	switch u.Message.Command() {
 	case todayCmd:
-		msgs = t.todayCmdResponse(u.Message)
+		msgs = t.todayCmdResponse(flags)
 	case futureCmd:
-		msgs = t.futureCmdResponse(u.Message)
+		msgs = t.futureCmdResponse(flags)
 	case pastCmd:
-		msgs = t.pastCmdResponse(u.Message)
+		msgs = t.pastCmdResponse(flags)
 	case helpCmd:
-		msgs = t.helpCmdResponse(u.Message)
+		msgs = t.helpCmdResponse(flags)
 	case startCmd:
 		msgs = []string{startMsg}
 	case statusCmd:
 		msgs = []string{statusMsg}
 	case hiCmd:
-		msgs = []string{hiMsg}
+		msgs = t.hiCmdResponse(u.Message)
+	case chatCmd:
+		msgs = []string{fmt.Sprint(u.Message.Chat.ID)}
 	default:
 		msgs = []string{unknownMsg}
 	}
@@ -128,138 +133,121 @@ func (t *tgUpdHandler) handleUpdate(api *tgbotapi.BotAPI, u *tgbotapi.Update) {
 	}
 }
 
-func (t *tgUpdHandler) helpCmdResponse(m *tgbotapi.Message) []string {
+type flags struct {
+	set                    *flag.FlagSet
+	tf, ff, pf, af, gf, mf bool
+	df                     int
+}
 
-	args := strings.Split(m.CommandArguments(), " ")
+func parseFlags(args []string) (*flags, error) {
+	f := flags{}
+	f.set = flag.NewFlagSet("bot flag set", flag.ContinueOnError)
 	if len(args) == 0 {
-		return []string{generalHelpMsg}
+		return &f, nil
 	}
 
-	var tf, ff, pf bool
-
-	hCmd := flag.NewFlagSet(helpCmd, flag.ContinueOnError)
-	hCmd.BoolVar(&tf, todayKey, false, cmdHelp+todayKey)
-	hCmd.BoolVar(&ff, futureKey, false, cmdHelp+futureKey)
-	hCmd.BoolVar(&pf, pastKey, false, cmdHelp+pastKey)
-	err := hCmd.Parse(args)
+	f.set.BoolVar(&f.tf, todayKey, false, cmdHelp+todayKey)
+	f.set.BoolVar(&f.ff, futureKey, false, cmdHelp+futureKey)
+	f.set.BoolVar(&f.pf, pastKey, false, cmdHelp+pastKey)
+	f.set.BoolVar(&f.af, auctionKey, false, auctionKeyUsg)
+	f.set.BoolVar(&f.gf, goKey, false, goKeyUsg)
+	f.set.BoolVar(&f.af, auctionKeyLong, false, auctionKeyUsg)
+	f.set.BoolVar(&f.gf, goKeyLong, false, goKeyUsg)
+	f.set.BoolVar(&f.mf, moneyKey, false, moneyKeyUsg)
+	f.set.BoolVar(&f.mf, moneyKeyLong, false, moneyKeyUsg)
+	f.set.IntVar(&f.df, daysKey, 0, daysKeyUsg)
+	f.set.IntVar(&f.df, daysKeyLong, 0, daysKeyUsg)
+	err := f.set.Parse(args)
 	if err != nil {
-		log.Println(err)
-		return []string{errorMsg}
+		return &f, err
 	}
 
-	var msg []string
+	return &f, nil
+}
+
+func (t *tgUpdHandler) hiCmdResponse(m *tgbotapi.Message) []string {
+	msg := hiMsg
+	if m.From.FirstName != "" {
+		msg = fmt.Sprintf("Привет, %s 👋\n--> /help для справки", m.From.FirstName)
+	} else if m.From.UserName != "" {
+		msg = fmt.Sprintf("Привет, %s 👋\n--> /help для справки", m.From.UserName)
+	}
+	return []string{msg}
+}
+
+func (t *tgUpdHandler) helpCmdResponse(f *flags) []string {
+
+	msg := make([]string, 0, f.set.NFlag()+1)
 
 	switch {
-	case tf:
+	case f.set.NArg() > 0:
+		errMsg := fmt.Sprintf("переданы непонятные для меня аргументы --> %v", f.set.Args())
+		msg = append(msg, errMsg)
+	case f.tf:
 		msg = append(msg, todayHelpMsg)
 		fallthrough
-	case ff:
+	case f.ff:
 		msg = append(msg, futureHelpMsg)
 		fallthrough
-	case pf:
+	case f.pf:
 		msg = append(msg, pastHelpMsg)
 	default:
-		msg = []string{generalHelpMsg}
+		msg = append(msg, generalHelpMsg)
 	}
 
 	return msg
 }
 
-func (t *tgUpdHandler) todayCmdResponse(m *tgbotapi.Message) []string {
+func (t *tgUpdHandler) todayCmdResponse(f *flags) []string {
 
-	args := strings.Split(m.CommandArguments(), " ")
-	if len(args) == 0 {
-		return t.query(0, []botDB.QueryOpt{botDB.Today})
-	}
+	opts := make([]botDB.QueryOpt, 0, f.set.NFlag()+1)
 
-	var af, gf bool
-
-	tCmd := flag.NewFlagSet(todayCmd, flag.ContinueOnError)
-	tCmd.BoolVar(&af, auctionKey, false, auctionKeyUsg)
-	tCmd.BoolVar(&gf, goKey, false, goKeyUsg)
-	tCmd.BoolVar(&af, auctionKeyLong, false, auctionKeyUsg)
-	tCmd.BoolVar(&gf, goKeyLong, false, goKeyUsg)
-	err := tCmd.Parse(args)
-	if err != nil {
-		log.Println(err)
-		return []string{errorMsg}
-	}
-
-	opts := make([]botDB.QueryOpt, 0, todayCmdKeysNum)
 	switch {
-	case af:
+	case f.set.NArg() > 0:
+		errMsg := fmt.Sprintf("переданы непонятные для меня аргументы --> %v", f.set.Args())
+		return []string{errMsg}
+	case f.af:
 		opts = append(opts, botDB.TodayAuction)
 		fallthrough
-	case gf:
+	case f.gf:
 		opts = append(opts, botDB.TodayGo)
-	case len(args) > 0:
-		return []string{errorMsg}
+	default:
+		opts = append(opts, botDB.Today)
 	}
 
 	return t.query(0, opts)
 }
 
-func (t *tgUpdHandler) futureCmdResponse(m *tgbotapi.Message) []string {
+func (t *tgUpdHandler) futureCmdResponse(f *flags) []string {
 
-	args := strings.Split(m.CommandArguments(), " ")
-	if len(args) == 0 {
-		return t.query(0, []botDB.QueryOpt{botDB.Future})
-	}
-
-	var af, gf, mf bool
-	var df int
-
-	fCmd := flag.NewFlagSet(futureCmd, flag.ContinueOnError)
-	fCmd.BoolVar(&af, auctionKey, false, auctionKeyUsg)
-	fCmd.BoolVar(&gf, goKey, false, goKeyUsg)
-	fCmd.BoolVar(&af, auctionKeyLong, false, auctionKeyUsg)
-	fCmd.BoolVar(&gf, goKeyLong, false, goKeyUsg)
-	fCmd.BoolVar(&mf, moneyKey, false, moneyKeyUsg)
-	fCmd.BoolVar(&mf, moneyKeyLong, false, moneyKeyUsg)
-	fCmd.IntVar(&df, daysKey, 0, daysKeyUsg)
-	fCmd.IntVar(&df, daysKeyLong, 0, daysKeyUsg)
-	err := fCmd.Parse(args)
-	if err != nil {
-		log.Println(err)
-		return []string{errorMsg}
-	}
-
-	opts := make([]botDB.QueryOpt, 0, futureCmdKeysNum)
+	opts := make([]botDB.QueryOpt, 0, f.set.NFlag()+1)
 	switch {
-	case af:
+	case f.set.NArg() > 0:
+		errMsg := fmt.Sprintf("переданы непонятные для меня аргументы --> %v", f.set.Args())
+		return []string{errMsg}
+	case f.af:
 		opts = append(opts, botDB.FutureAuction)
 		fallthrough
-	case gf:
+	case f.gf:
 		opts = append(opts, botDB.FutureGo)
 		fallthrough
-	case mf:
+	case f.mf:
 		opts = append(opts, botDB.FutureMoney)
 	default:
-		return []string{errorMsg}
+		opts = append(opts, botDB.Future)
 	}
 
-	return t.query(df, opts)
+	return t.query(f.df, opts)
 }
 
-func (t *tgUpdHandler) pastCmdResponse(m *tgbotapi.Message) []string {
+func (t *tgUpdHandler) pastCmdResponse(f *flags) []string {
 
-	args := strings.Split(m.CommandArguments(), " ")
-	if len(args) == 0 {
-		return t.query(0, []botDB.QueryOpt{botDB.Past})
+	if f.set.NArg() > 0 {
+		errMsg := fmt.Sprintf("переданы непонятные для меня аргументы --> %v", f.set.Args())
+		return []string{errMsg}
 	}
 
-	var df int
-
-	pCmd := flag.NewFlagSet(pastCmd, flag.ContinueOnError)
-	pCmd.IntVar(&df, daysKey, 0, daysKeyUsg)
-	pCmd.IntVar(&df, daysKeyLong, 0, daysKeyUsg)
-	err := pCmd.Parse(args)
-	if err != nil {
-		log.Println(err)
-		return []string{errorMsg}
-	}
-
-	return t.query(df, []botDB.QueryOpt{botDB.Past})
+	return t.query(f.df, []botDB.QueryOpt{botDB.Past})
 }
 
 func (t *tgUpdHandler) query(daysLimit int, opts []botDB.QueryOpt) []string {
@@ -276,7 +264,7 @@ func buildMessage(recs []botDB.PurchaseRecord) string {
 	var b strings.Builder
 
 	for i := range recs {
-		b.WriteString(recs[i].InfoString())
+		b.WriteString(recs[i].String())
 	}
 
 	return b.String()
