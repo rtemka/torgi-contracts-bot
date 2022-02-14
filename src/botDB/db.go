@@ -9,6 +9,8 @@ import (
 	_ "github.com/lib/pq"
 )
 
+var ErrNoRows = sql.ErrNoRows
+
 // Model responsible for database management
 type Model struct {
 	db      *sql.DB
@@ -41,6 +43,10 @@ type table interface {
 	name() string // Table name
 
 	primaryKeyCol() string // Table primary key
+
+	// Table secondary key
+	// this needed because purchase table has two search keys
+	secondaryKeyCol() string
 
 	nameKeyCol() string // Table most significant name column
 
@@ -226,8 +232,9 @@ func (m *Model) fillMap(t table) error {
 		id   int64
 		name string
 	)
+
 	// build statement for querying table id and name info from db
-	q := idNameStatement(t.name(), t.primaryKeyCol(), t.nameKeyCol())
+	q := selectWhereStmt(opts{tableName: t.name(), cols: t.columns()})
 
 	rows, err := m.db.Query(q)
 	if err != nil {
@@ -330,8 +337,36 @@ func (m *Model) Query(daysLimit int, opts ...QueryOpt) ([]PurchaseRecord, error)
 }
 
 func (m *Model) QueryRow(id int64) (PurchaseRecord, error) {
+	var r PurchaseRecord
+	if id == 0 {
+		return r, fmt.Errorf("invalid identifier %d", id)
+	}
 
-	return PurchaseRecord{}, nil
+	// get main table
+	t := m.tk.table(purchTableName)
+
+	opts := opts{
+		tableName:   t.name(),
+		whereClause: fmt.Sprintf("where %s = %d", t.secondaryKeyCol(), id),
+		cols:        t.columns(),
+	}
+
+	q := selectWhereStmt(opts)
+	err := m.db.QueryRow(q).Scan(
+		&r.RegistryNumber, &r.PurchaseSubject, &r.PurchaseSubjectAbbr, &r.PurchaseType,
+		&r.CollectingDateTime, &r.ApprovalDateTime, &r.BiddingDateTime, &r.Region, &r.CustomerType,
+		&r.MaxPrice, &r.ApplicationGuarantee, &r.ContractGuarantee, &r.Status, &r.OurParticipants,
+		&r.Estimation, &r.Winner, &r.WinnerPrice, &r.Participants)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return r, ErrNoRows
+		}
+		return r, err
+	}
+
+	r.queryOpt = General
+
+	return r, nil
 }
 
 // QueryOpt is the parameter for
@@ -341,6 +376,7 @@ type QueryOpt int
 // Read operation parameter
 const (
 	_ QueryOpt = iota
+	General
 	Today
 	Future
 	Past

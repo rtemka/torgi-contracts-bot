@@ -8,10 +8,12 @@ import (
 // opts is parameters needed to build
 // query statements
 type opts struct {
-	tableName  string
-	primaryKey string
-	multiplier int
-	withUpdate bool
+	tableName   string
+	primaryKey  string
+	multiplier  int
+	withUpdate  bool
+	whereClause string
+	cols        []string
 }
 
 func upsertStatement(opts opts, cols []string) string {
@@ -27,19 +29,23 @@ func upsertStatement(opts opts, cols []string) string {
 		opts.tableName, columns(cols), placeholders(len(cols), opts.multiplier), opts.primaryKey)
 }
 
-func insertStatement(table string, cols []string) string {
-	if len(cols) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("insert into %s (%s) values %s;", table, columns(cols), placeholders(len(cols), 1))
-}
+// func insertStatement(tableName string, cols []string) string {
+// 	if len(cols) == 0 {
+// 		return ""
+// 	}
+// 	return fmt.Sprintf("insert into %s (%s) values %s;", tableName, columns(cols), placeholders(len(cols), 1))
+// }
 
-func idStatement(tableName, nameCol, idCol, name string) string {
-	return fmt.Sprintf("select %s from %s where %s = %s;", idCol, tableName, nameCol, name)
-}
+// func idStatement(tableName, nameCol, idCol, name string) string {
+// 	return fmt.Sprintf("select %s from %s where %s = %s;", idCol, tableName, nameCol, name)
+// }
 
-func idNameStatement(tableName, idCol, nameCol string) string {
-	return fmt.Sprintf("select %s, %s from %s;", idCol, nameCol, tableName)
+// func idNameStatement(tableName, idCol, nameCol string) string {
+// 	return fmt.Sprintf("select %s, %s from %s;", idCol, nameCol, tableName)
+// }
+
+func selectWhereStmt(opts opts) string {
+	return fmt.Sprintf("select (%s) from %s %s;", columns(opts.cols), opts.tableName, opts.whereClause)
 }
 
 func placeholders(count, multiplier int) string {

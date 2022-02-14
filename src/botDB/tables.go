@@ -137,6 +137,8 @@ func (t etpTable) primaryKeyCol() string {
 	return etpID
 }
 
+func (t etpTable) secondaryKeyCol() string { return "" }
+
 func (t etpTable) nameKeyCol() string {
 	return etpName
 }
@@ -157,6 +159,8 @@ func (t purchTypeTable) name() string {
 func (t purchTypeTable) primaryKeyCol() string {
 	return purchaseTypeID
 }
+
+func (t purchTypeTable) secondaryKeyCol() string { return "" }
 
 func (t purchTypeTable) nameKeyCol() string {
 	return purchaseTypeName
@@ -179,6 +183,8 @@ func (t regionTable) primaryKeyCol() string {
 	return regionID
 }
 
+func (t regionTable) secondaryKeyCol() string { return "" }
+
 func (t regionTable) nameKeyCol() string {
 	return regionName
 }
@@ -199,6 +205,8 @@ func (t custTypeTable) name() string {
 func (t custTypeTable) primaryKeyCol() string {
 	return customerTypeID
 }
+
+func (t custTypeTable) secondaryKeyCol() string { return "" }
 
 func (t custTypeTable) nameKeyCol() string {
 	return customerTypeName
@@ -221,6 +229,8 @@ func (t statusTable) primaryKeyCol() string {
 	return statusID
 }
 
+func (t statusTable) secondaryKeyCol() string { return "" }
+
 func (t statusTable) nameKeyCol() string {
 	return statusName
 }
@@ -242,6 +252,8 @@ func (t purchStrCodeTable) primaryKeyCol() string {
 	return purchaseStringCode
 }
 
+func (t purchStrCodeTable) secondaryKeyCol() string { return "" }
+
 func (t purchStrCodeTable) nameKeyCol() string {
 	return purchaseStringCodeName
 }
@@ -262,6 +274,8 @@ func (t purchaseTable) name() string {
 func (t purchaseTable) primaryKeyCol() string {
 	return registryNumber
 }
+
+func (t purchaseTable) secondaryKeyCol() string { return purchaseID }
 
 func (t purchaseTable) nameKeyCol() string {
 	return purchaseSubject
