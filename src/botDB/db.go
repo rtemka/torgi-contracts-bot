@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -33,26 +34,18 @@ func NewModel(db *sql.DB) *Model {
 // tablesKeeper provides information about available DB tables
 type tablesKeeper interface {
 	table(name string) table // returns table for the giving name
-
-	tables() []table // returns available DB tables
+	tables() []table         // returns available DB tables
 }
 
 // Single table interface. Provides key
 // information about concrete table
 type table interface {
-	name() string // Table name
-
-	primaryKeyCol() string // Table primary key
-
-	// Table secondary key
-	// this needed because purchase table has two search keys
-	secondaryKeyCol() string
-
-	nameKeyCol() string // Table most significant name column
-
-	refTables() []table // Reference tables (foreign key tables)
-
-	columns() []string // Table columns
+	name() string                  // Table name
+	primaryKeyCol(tableOpt) string // Table primary key
+	nameKeyCol() string            // Table significant name column
+	refTables() []table            // Reference tables (foreign key tables)
+	columns(tableOpt) []string     // Table columns
+	joinOn(table) string           // Returns key that joins this table with provided table
 }
 
 // map of maps with values of reference table.
@@ -66,10 +59,6 @@ func OpenDB(DbParams string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// if err = db.Ping(); err != nil {
-	// 	return nil, err
-	// }
 
 	return db, db.Ping()
 }
@@ -130,18 +119,17 @@ func (m *Model) upsrt() error {
 
 	// construct options for building an
 	// query statement
-	opts := opts{
-		tableName:  t.name(),
-		primaryKey: t.nameKeyCol(),
-		multiplier: len(m.records),
-		withUpdate: true,
+	opts := stmtOpts{
+		tableName:   t.name(),
+		conflictKey: t.nameKeyCol(),
+		multiplier:  len(m.records),
+		withUpdate:  true,
+		// get table columns that taking part in update
+		cols: t.columns(upsert),
 	}
 
-	// get table columns that taking part in update
-	cols := t.columns()
-
 	// building an upsert query
-	q := upsertStatement(opts, cols)
+	q := upsertStatement(opts)
 
 	// get arguments for the query
 	args := m.buildArgs()
@@ -199,7 +187,7 @@ func (m *Model) buildArgs() []interface{} {
 	args := make([]interface{}, 0, len(m.records)*(purchTableColsCount-1))
 
 	for i := range m.records {
-		args = append(args, m.records[i].args()...)
+		args = append(args, m.records[i].args(upsert)...)
 	}
 
 	return args
@@ -234,7 +222,7 @@ func (m *Model) fillMap(t table) error {
 	)
 
 	// build statement for querying table id and name info from db
-	q := selectWhereStmt(opts{tableName: t.name(), cols: t.columns()})
+	q := selectWhereStmt(stmtOpts{tableName: t.name(), cols: t.columns(upsert)})
 
 	rows, err := m.db.Query(q)
 	if err != nil {
@@ -331,11 +319,52 @@ func (m *Model) Delete() error {
 	return nil
 }
 
-func (m *Model) Query(daysLimit int, opts ...QueryOpt) ([]PurchaseRecord, error) {
+// Query performs select operations from
+// database based on provided query options
+func (m *Model) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error) {
 
-	return nil, nil
+	var recs []PurchaseRecord
+	var r PurchaseRecord
+
+	// get main table
+	t := m.tk.table(purchTableName)
+
+	// range over provided query options
+	for _, q := range qopts {
+
+		opts := q.stmtOpts(daysLimit, t) // build statement options
+		stmt := selectWhereStmt(opts)    // build statement
+		rows, err := m.db.Query(stmt)
+		if err != nil {
+			return nil, err
+		}
+
+		defer rows.Close()
+
+		for rows.Next() {
+			err := rows.Scan(r.args(q.tableOpt())...)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if err = rows.Err(); err != nil {
+			return nil, err
+		}
+
+		rows.Close()
+
+		// we add specific query option to the record
+		// this needed for the record to properly
+		// build string info about itself
+		r.queryOpt = q
+		recs = append(recs, r)
+	}
+
+	return recs, nil
 }
 
+// QueryRow looks for one specific row by id
 func (m *Model) QueryRow(id int64) (PurchaseRecord, error) {
 	var r PurchaseRecord
 	if id == 0 {
@@ -345,18 +374,15 @@ func (m *Model) QueryRow(id int64) (PurchaseRecord, error) {
 	// get main table
 	t := m.tk.table(purchTableName)
 
-	opts := opts{
+	opts := stmtOpts{
 		tableName:   t.name(),
-		whereClause: fmt.Sprintf("where %s = %d", t.secondaryKeyCol(), id),
-		cols:        t.columns(),
+		fromClause:  buildFromClause(t, left),
+		whereClause: fmt.Sprintf("where %s = %d", t.primaryKeyCol(secondaryKey), id),
+		cols:        t.columns(query),
 	}
 
-	q := selectWhereStmt(opts)
-	err := m.db.QueryRow(q).Scan(
-		&r.RegistryNumber, &r.PurchaseSubject, &r.PurchaseSubjectAbbr, &r.PurchaseType,
-		&r.CollectingDateTime, &r.ApprovalDateTime, &r.BiddingDateTime, &r.Region, &r.CustomerType,
-		&r.MaxPrice, &r.ApplicationGuarantee, &r.ContractGuarantee, &r.Status, &r.OurParticipants,
-		&r.Estimation, &r.Winner, &r.WinnerPrice, &r.Participants)
+	stmt := selectWhereStmt(opts)
+	err := m.db.QueryRow(stmt).Scan(r.args(query)...)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return r, ErrNoRows
@@ -364,16 +390,19 @@ func (m *Model) QueryRow(id int64) (PurchaseRecord, error) {
 		return r, err
 	}
 
+	// we add specific query option to the record
+	// this needed for the record to properly
+	// build string info about itself
 	r.queryOpt = General
 
 	return r, nil
 }
 
 // QueryOpt is the parameter for
-// the Read operation
+// the Read/Query operation
 type QueryOpt int
 
-// Read operation parameter
+// Read/Query operation parameter
 const (
 	_ QueryOpt = iota
 	General
@@ -386,3 +415,110 @@ const (
 	FutureGo
 	FutureMoney
 )
+
+// String returns string representation of queryOpt
+func (q QueryOpt) String() string {
+	return []string{"", "", "Сегодня\n", "Впереди\n", "Результаты\n\n",
+		"Аукционы⚔️\n\n", "Заявки🏃\n\n", "Аукционы⚔️\n\n",
+		"Заявки🏃\n\n", "Деньги💰\n\n"}[q]
+}
+
+// tableOpt returns tableOpt option based on self
+func (q QueryOpt) tableOpt() tableOpt {
+	switch q {
+	case FutureMoney:
+		return queryMoney
+	default:
+		return query
+	}
+}
+
+// stmtOpts builds stmtOpts based on self
+func (q QueryOpt) stmtOpts(daysLimit int, t table) stmtOpts {
+	switch q {
+	case FutureMoney:
+		return stmtOpts{
+			tableName:   t.name(),
+			fromClause:  buildFromClause(t, left),
+			whereClause: q.whereClause(daysLimit),
+			groupBy:     []string{regionName, purchaseStringCodeName},
+			cols:        t.columns(queryMoney),
+		}
+	default:
+		return stmtOpts{
+			tableName:   t.name(),
+			fromClause:  buildFromClause(t, left),
+			whereClause: q.whereClause(daysLimit),
+			orderBy:     []string{biddingColumn},
+			cols:        t.columns(query),
+		}
+	}
+}
+
+// whereClause builds where clause based on self
+func (q QueryOpt) whereClause(daysLimit int) string {
+	var b strings.Builder
+
+	switch q {
+
+	case Today:
+		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
+		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = current_date::timestamp)", biddingColumn))
+		b.WriteString(fmt.Sprintf("  or (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
+		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = (current_date+1)::timestamp)", collectingColumn))
+
+	case Future:
+		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
+		if daysLimit > 0 {
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", biddingColumn, daysLimit))
+			b.WriteString(fmt.Sprintf("or (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", collectingColumn, daysLimit))
+			return b.String()
+		}
+		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", biddingColumn))
+		b.WriteString(fmt.Sprintf("or (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
+		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", collectingColumn))
+
+	case Past:
+		if daysLimit > 0 {
+			return fmt.Sprintf("where (%s in ('%s', '%s') and %s between (current_date-%d)::timestamp and current_date::timestamp)",
+				statusName, statusWin, statusLost, biddingColumn, daysLimit)
+		}
+		return fmt.Sprintf("where (%s in ('%s', '%s') and %s < current_date::timestamp)",
+			statusName, statusWin, statusLost, biddingColumn)
+
+	case TodayAuction:
+		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
+		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = current_date::timestamp)", biddingColumn))
+
+	case TodayGo:
+		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
+		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = (current_date+1)::timestamp)", collectingColumn))
+
+	case FutureAuction:
+		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
+		if daysLimit > 0 {
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", biddingColumn, daysLimit))
+			return b.String()
+		}
+		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", biddingColumn))
+
+	case FutureGo:
+		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
+		if daysLimit > 0 {
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", collectingColumn, daysLimit))
+			return b.String()
+		}
+		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", collectingColumn))
+
+	case FutureMoney:
+		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
+		if daysLimit > 0 {
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", collectingColumn, daysLimit))
+			return b.String()
+		}
+		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", collectingColumn))
+	}
+
+	return b.String()
+}

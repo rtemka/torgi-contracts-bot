@@ -50,40 +50,41 @@ type PurchaseRecord struct {
 	queryOpt             QueryOpt
 }
 
+// Info returns string representation of record
+func (p *PurchaseRecord) Info() (string, QueryOpt) {
+
+	switch p.queryOpt {
+
+	case TodayAuction:
+		return p.auctionString(), p.queryOpt
+
+	case Future, FutureAuction, TodayGo, FutureGo:
+		return p.participateString(), p.queryOpt
+
+	case Today:
+		if p.Status == statusGo {
+			return p.participateString(), TodayGo
+		}
+		return p.auctionString(), p.queryOpt
+
+	case FutureMoney:
+		return p.moneyString(), p.queryOpt
+
+	case Past:
+		return p.pastString(), p.queryOpt
+
+	default:
+		return p.generalString(), p.queryOpt
+
+	}
+
+}
+
 func (p *PurchaseRecord) truncNum() string {
 	if len(p.RegistryNumber) < 3 {
 		return ""
 	}
 	return p.RegistryNumber[len(p.RegistryNumber)-3:]
-}
-
-func (p *PurchaseRecord) String() string {
-
-	switch p.queryOpt {
-
-	case TodayAuction:
-		return p.auctionString()
-
-	case Future, FutureAuction, TodayGo, FutureGo:
-		return p.participateString()
-
-	case Today:
-		if p.Status == statusGo {
-			return p.participateString()
-		}
-		return p.auctionString()
-
-	case FutureMoney:
-		return p.moneyString()
-
-	case Past:
-		return p.pastString()
-
-	default:
-		return p.generalString()
-
-	}
-
 }
 
 func (p *PurchaseRecord) generalString() string {
@@ -169,27 +170,29 @@ func (p *PurchaseRecord) setForeignKeys(rm refTablesMap) map[string]string {
 }
 
 // args returns PurchaseRecord fields that
-// supposed to taking a part in insert/update operation
-func (p *PurchaseRecord) args() []interface{} {
-	return []interface{}{
-		p.RegistryNumber,
-		p.PurchaseSubject,
-		p.PurchaseSubjectAbbrId,
-		p.PurchaseTypeId,
-		p.CollectingDateTime,
-		p.ApprovalDateTime,
-		p.BiddingDateTime,
-		p.RegionId,
-		p.CustomerTypeId,
-		p.MaxPrice,
-		p.ApplicationGuarantee,
-		p.ContractGuarantee,
-		p.StatusId,
-		p.OurParticipants,
-		p.Estimation,
-		p.ETPId,
-		p.Winner,
-		p.WinnerPrice,
-		p.Participants,
+// supposed to taking a part in insert/update/query operation
+// based on provided table option
+func (p *PurchaseRecord) args(to tableOpt) []interface{} {
+
+	switch to {
+	case query:
+		return []interface{}{
+			&p.PurchaseId, &p.RegistryNumber, &p.PurchaseSubject,
+			&p.PurchaseSubjectAbbr, &p.PurchaseType, &p.CollectingDateTime,
+			&p.ApprovalDateTime, &p.BiddingDateTime, &p.Region, &p.CustomerType,
+			&p.MaxPrice, &p.ApplicationGuarantee, &p.ContractGuarantee, &p.Status,
+			&p.OurParticipants, &p.Estimation, &p.Winner, &p.WinnerPrice, &p.Participants,
+		}
+	case queryMoney:
+		return []interface{}{&p.Region, &p.PurchaseSubjectAbbr, &p.ApplicationGuarantee}
+	default:
+		return []interface{}{
+			p.RegistryNumber, p.PurchaseSubject, p.PurchaseSubjectAbbrId,
+			p.PurchaseTypeId, p.CollectingDateTime, p.ApprovalDateTime,
+			p.BiddingDateTime, p.RegionId, p.CustomerTypeId,
+			p.MaxPrice, p.ApplicationGuarantee, p.ContractGuarantee,
+			p.StatusId, p.OurParticipants, p.Estimation,
+			p.ETPId, p.Winner, p.WinnerPrice, p.Participants,
+		}
 	}
 }
