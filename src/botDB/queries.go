@@ -37,7 +37,7 @@ func upsertStatement(opts stmtOpts) string {
 		return ""
 	}
 
-	// do update or do nothing when conflict is encountering
+	// do update or do nothing when conflict is encountered
 	if opts.withUpdate {
 		return fmt.Sprintf("insert into %s (%s) values %s on conflict (%s) do update %s;",
 			opts.tableName, columns(opts.cols...), placeholders(len(opts.cols), opts.multiplier), opts.conflictKey, excluded(opts.cols))

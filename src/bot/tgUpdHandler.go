@@ -70,10 +70,10 @@ const (
 	moneyKeyLong   = "money"
 	daysKey        = "d"
 	daysKeyLong    = "days"
-	todayKey       = "/t"
-	futureKey      = "/f"
-	pastKey        = "/p"
-	infoKey        = "/i"
+	todayKey       = "/" + todayCmd
+	futureKey      = "/" + futureCmd
+	pastKey        = "/" + pastCmd
+	infoKey        = "/" + infoCmd
 )
 
 // key usage
