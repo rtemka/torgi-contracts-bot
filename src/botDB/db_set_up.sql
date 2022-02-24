@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS purchase_registry (
 	registry_number varchar (20) PRIMARY KEY,
 	purchase_id bigint GENERATED ALWAYS AS IDENTITY,
 	purchase_subject text NOT NULL,
-	purchase_string_code integer,
+	purchase_string_code integer NOT NULL,
 	purchase_type_id integer NOT NULL,
 	-- collecting date NOT NULL,
 	-- collecting_time timetz NOT NULL,
