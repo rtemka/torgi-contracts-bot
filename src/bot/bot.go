@@ -2,7 +2,6 @@ package bot
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -115,9 +114,9 @@ func (bot *bot) checkWebhook(c *Config) (string, error) {
 		return "", err
 	}
 
-	if info.LastErrorDate != 0 {
-		return "", fmt.Errorf("telegram callback failed: %s", info.LastErrorMessage)
-	}
+	// if info.LastErrorDate != 0 {
+	// 	return "", fmt.Errorf("telegram callback failed: %s", info.LastErrorMessage)
+	// }
 
 	if info.IsSet() {
 		return "webhook already set and available", nil
