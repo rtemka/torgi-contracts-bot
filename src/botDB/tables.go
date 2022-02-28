@@ -12,7 +12,7 @@ const (
 	purchaseABBR         = "purchase_string_code"
 	purchaseTypeColumn   = "purchase_type_id"
 	collectingColumn     = "collecting"
-	approvalColumn       = "approval_date"
+	approvalColumn       = "approval"
 	biddingColumn        = "bidding"
 	regionColumn         = "region_id"
 	customerTypeColumn   = "customer_type_id"

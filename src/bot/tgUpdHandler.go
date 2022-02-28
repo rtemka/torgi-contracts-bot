@@ -13,13 +13,13 @@ import (
 
 // bot message
 const (
-	unknownMsg     = `Извини, не знаю такой команды. Попробуй \-\-\> */help*`
+	unknownMsg     = `Извини, не знаю такой команды. Попробуй ➡️ */help*`
 	errorMsg       = "Извини 😥, не получилось выполнить команду"
 	invalidArgsMsg = "Извини, для команды введены неправильные аргументы 🤷"
-	hiMsg          = `Привет 👋 \-\-\> */help* для справки`
+	hiMsg          = `Привет 👋 ➡️ */help* для справки`
 	startMsg       = "Готов к работе ⚒️"
 	statusMsg      = "👌"
-	errorOptionMsg = "Неправильная опция команды\n" + `\-\-\> */help* \-\[*_имя команды_*\]` +
+	errorOptionMsg = "Неправильная опция команды\n" + `➡️ */help* \-\[*_имя команды_*\]` +
 		"\nдля справки по команде"
 	notFoundMsg = "Не нашел ничего по заданному id"
 )
@@ -28,7 +28,7 @@ const (
 const (
 	generalHelpMsg = `*Доступные команды:*` + "\n\n" +
 		`*/` + todayCmd + `* \- аукционы⚔️ / заявки🔜 сегодня` + "\n\n" +
-		`*/` + futureCmd + `* \- аукционы/заявки/обеспечения в будущем ⏳` + "\n\n" +
+		`*/` + futureCmd + `* \- аукционы/заявки/обеспечения в будущем 🔮` + "\n\n" +
 		`*/` + pastCmd + `* \- результаты закупок ⚰️` + "\n\n" +
 		`*/` + infoCmd + `* \- информация по закупке 📝` + "\n\n" +
 		"Подробнее о каждой команде:" + "\n" + `*/` + helpCmd + `* \-\[*_имя команды_*\]`
@@ -100,30 +100,26 @@ type dbQueryManager interface {
 
 // tgUpdHandler processes incoming telegram updates
 type tgUpdHandler struct {
-	qm dbQueryManager
+	api *tgbotapi.BotAPI
+	qm  dbQueryManager
 }
 
-func newTgUpdHandler(qm dbQueryManager) *tgUpdHandler {
-	return &tgUpdHandler{qm: qm}
+func newTgUpdHandler(qm dbQueryManager, api *tgbotapi.BotAPI) *tgUpdHandler {
+	return &tgUpdHandler{qm: qm, api: api}
 }
 
 // handleUpdate redirects incoming update to appropriate handler
-func (t *tgUpdHandler) handleUpdate(api *tgbotapi.BotAPI, u *tgbotapi.Update) {
+func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 	if !u.Message.IsCommand() {
 		return
 	}
-	// we split incoming message command arguments
-	args := strings.Split(u.Message.CommandArguments(), " ")
-	// then we parse flags from this message as if it was
+
+	// we parse flags from this message as if it was
 	// command line arguments
-	flags, err := parseFlags(args)
+	flags, err := parseMsgArgs(u.Message.CommandArguments())
 	if err != nil {
 		log.Println(err)
-		msg := tgbotapi.NewMessage(u.Message.Chat.ID, errorOptionMsg)
-		msg.ParseMode = parseMode
-		if _, err := api.Send(msg); err != nil {
-			log.Println(err)
-		}
+		t.send(u.Message.Chat.ID, errorOptionMsg)
 		return
 	}
 
@@ -154,13 +150,38 @@ func (t *tgUpdHandler) handleUpdate(api *tgbotapi.BotAPI, u *tgbotapi.Update) {
 	}
 
 	// sending responses
+	t.send(u.Message.Chat.ID, msgs...)
+}
+
+// send is helper function that is responsible
+// for sending responses
+func (t *tgUpdHandler) send(chatID int64, msgs ...string) {
+	m := tgbotapi.NewMessage(chatID, "")
+	m.ParseMode = parseMode
 	for i := range msgs {
-		msg := tgbotapi.NewMessage(u.Message.Chat.ID, msgs[i])
-		msg.ParseMode = parseMode
-		if _, err := api.Send(msg); err != nil {
+		m.Text = msgs[i]
+		if _, err := t.api.Send(m); err != nil {
 			log.Println(err)
 		}
 	}
+}
+
+// parseMsgArgs inspects provided arguments
+// and returns parsed flags or error
+func parseMsgArgs(args string) (*flags, error) {
+	var s []string
+	if args != "" {
+		// we split incoming message command arguments
+		s = strings.Split(args, " ")
+	}
+	// then we parse flags from this message as if it was
+	// command line arguments
+	// if args is empty we pass a nil slice
+	flags, err := parseFlags(s)
+	if err != nil {
+		return nil, err
+	}
+	return flags, nil
 }
 
 // flags holds flag set and all expected flags
@@ -174,7 +195,7 @@ type flags struct {
 func parseFlags(args []string) (*flags, error) {
 	f := flags{}
 	f.set = flag.NewFlagSet("bot flag set", flag.ContinueOnError)
-	if len(args) == 1 && args[0] == "" {
+	if len(args) == 0 {
 		return &f, nil // if no arguments provided we don't parsing
 	}
 
@@ -202,9 +223,9 @@ func parseFlags(args []string) (*flags, error) {
 func (t *tgUpdHandler) hiCmdResponse(m *tgbotapi.Message) []string {
 	msg := hiMsg
 	if m.From.FirstName != "" {
-		msg = fmt.Sprintf("Привет, %s 👋\n%s */help* для справки", m.From.FirstName, `\-\-\>`)
+		msg = fmt.Sprintf("Привет, %s 👋\n➡️ */help* для справки", m.From.FirstName)
 	} else if m.From.UserName != "" {
-		msg = fmt.Sprintf("Привет, %s 👋\n%s */help* для справки", m.From.UserName, `\-\-\>`)
+		msg = fmt.Sprintf("Привет, %s 👋\n➡️ */help* для справки", m.From.UserName)
 	}
 	return []string{msg}
 }
@@ -212,8 +233,7 @@ func (t *tgUpdHandler) hiCmdResponse(m *tgbotapi.Message) []string {
 // unknownArgsErr returns error message when
 // input arguments contains some garbage leftovers
 func unknownArgsErr(f *flags) []string {
-	return []string{fmt.Sprintf("Переданы непонятные для меня аргументы %s %v",
-		`\-\-\>`, f.set.Args())}
+	return []string{fmt.Sprintf("Переданы непонятные для меня аргументы ➡️ %v", f.set.Args())}
 }
 
 // helpCmdResponse is the '/help' command handler

@@ -42,7 +42,7 @@ type dbUpdateHandler interface {
 // processing incoming telegram updates i.e.
 // responding to the users messages
 type tgUpdateHandler interface {
-	handleUpdate(api *tgbotapi.BotAPI, u *tgbotapi.Update)
+	handleUpdate(u *tgbotapi.Update)
 }
 
 func initBot(c *Config) (*bot, error) {
@@ -56,7 +56,7 @@ func initBot(c *Config) (*bot, error) {
 
 	m := botDB.NewModel(c.DB)
 	dh := newDbHandler(m)
-	uh := newTgUpdHandler(m)
+	uh := newTgUpdHandler(m, botAPI)
 
 	return &bot{
 		name:  c.BotName,
@@ -101,7 +101,7 @@ func Start(c *Config) error {
 			continue
 		}
 
-		go bot.tgh.handleUpdate(bot.api, &update)
+		go bot.tgh.handleUpdate(&update)
 	}
 
 	return nil
