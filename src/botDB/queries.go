@@ -59,10 +59,10 @@ func selectWhereStmt(opts stmtOpts) string {
 	}
 
 	if opts.fromClause != "" {
-		return fmt.Sprintf("select (%s) from %s %s %s %s %s;",
+		return fmt.Sprintf("select %s from %s %s %s %s %s;",
 			columns(opts.cols...), opts.fromClause, opts.whereClause, group, order, limit)
 	}
-	return fmt.Sprintf("select (%s) from %s %s %s %s %s;",
+	return fmt.Sprintf("select %s from %s %s %s %s %s;",
 		columns(opts.cols...), opts.tableName, opts.whereClause, group, order, limit)
 }
 

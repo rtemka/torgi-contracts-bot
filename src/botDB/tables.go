@@ -254,7 +254,9 @@ func (t purchaseTable) columns(to tableOpt) []string {
 			etpName, winnerColumn, winnerPrice, participantsColumn,
 		}
 	case queryMoney:
-		return []string{regionName, purchaseStringCodeName,
+		cond := fmt.Sprintf("case when %s is null then '--не установлен--' else %s end %s",
+			ourParticipants, ourParticipants, ourParticipants)
+		return []string{cond, statusName,
 			fmt.Sprintf("sum (%s)", applicationGuarantee),
 		}
 	default:

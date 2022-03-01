@@ -94,7 +94,8 @@ func (m *Model) Upsert(rc io.ReadCloser) error {
 	return m.upsrt()
 }
 
-// prepareUpdate
+// prepareUpdate sets up a reference map for Model,
+// foreign keys for the record
 func (m *Model) prepareUpdate() error {
 	// setting up reference tables map
 	err := m.setRefMaps()
@@ -121,7 +122,7 @@ func (m *Model) upsrt() error {
 	// query statement
 	opts := stmtOpts{
 		tableName:   t.name(),
-		conflictKey: t.nameKeyCol(),
+		conflictKey: t.primaryKeyCol(primaryKey),
 		multiplier:  len(m.records),
 		withUpdate:  true,
 		// get table columns that taking part in update
@@ -129,7 +130,7 @@ func (m *Model) upsrt() error {
 	}
 
 	// building an upsert query
-	q := upsertStatement(opts)
+	stmt := upsertStatement(opts)
 
 	// get arguments for the query
 	args := m.buildArgs()
@@ -142,7 +143,7 @@ func (m *Model) upsrt() error {
 
 	defer tx.Rollback()
 
-	_, err = tx.Exec(q, args)
+	_, err = tx.Exec(stmt, args...)
 	if err != nil {
 		return err
 	}
@@ -346,6 +347,11 @@ func (m *Model) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error
 			if err != nil {
 				return nil, err
 			}
+			// we add specific query option to the record
+			// this needed for the record to properly
+			// build string info about itself
+			r.queryOpt = q
+			recs = append(recs, r)
 		}
 
 		if err = rows.Err(); err != nil {
@@ -353,12 +359,6 @@ func (m *Model) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error
 		}
 
 		rows.Close()
-
-		// we add specific query option to the record
-		// this needed for the record to properly
-		// build string info about itself
-		r.queryOpt = q
-		recs = append(recs, r)
 	}
 
 	return recs, nil
@@ -418,9 +418,9 @@ const (
 
 // String returns string representation of queryOpt
 func (q QueryOpt) String() string {
-	return []string{"", "", "Сегодня\n", "Впереди\n", "Результаты\n\n",
-		"Аукционы⚔️\n\n", "Заявки🏃\n\n", "Аукционы⚔️\n\n",
-		"Заявки🏃\n\n", "Деньги💰\n\n"}[q]
+	return []string{"", "", "*Сегодня*\n\n", "*Впереди*\n\n", "*Результаты*\n\n",
+		"*Аукционы* ⚔️\n\n", "*Заявки* 🏃\n\n", "*Аукционы* ⚔️\n\n",
+		"*Заявки* 🏃\n\n", "*Обеспечения заявок* 💰\n\n"}[q]
 }
 
 // tableOpt returns tableOpt option based on self
@@ -441,7 +441,7 @@ func (q QueryOpt) stmtOpts(daysLimit int, t table) stmtOpts {
 			tableName:   t.name(),
 			fromClause:  buildFromClause(t, left),
 			whereClause: q.whereClause(daysLimit),
-			groupBy:     []string{regionName, purchaseStringCodeName},
+			groupBy:     []string{ourParticipants, statusName},
 			cols:        t.columns(queryMoney),
 		}
 	default:
@@ -470,9 +470,9 @@ func (q QueryOpt) whereClause(daysLimit int) string {
 	case Future:
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
 		if daysLimit > 0 {
-			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", biddingColumn, daysLimit))
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp)", biddingColumn, daysLimit))
 			b.WriteString(fmt.Sprintf("or (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
-			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", collectingColumn, daysLimit))
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp)", collectingColumn, daysLimit))
 			return b.String()
 		}
 		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", biddingColumn))
@@ -498,7 +498,7 @@ func (q QueryOpt) whereClause(daysLimit int) string {
 	case FutureAuction:
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
 		if daysLimit > 0 {
-			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", biddingColumn, daysLimit))
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp)", biddingColumn, daysLimit))
 			return b.String()
 		}
 		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", biddingColumn))
@@ -506,7 +506,7 @@ func (q QueryOpt) whereClause(daysLimit int) string {
 	case FutureGo:
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
 		if daysLimit > 0 {
-			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", collectingColumn, daysLimit))
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp)", collectingColumn, daysLimit))
 			return b.String()
 		}
 		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", collectingColumn))
@@ -514,7 +514,7 @@ func (q QueryOpt) whereClause(daysLimit int) string {
 	case FutureMoney:
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
 		if daysLimit > 0 {
-			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp", collectingColumn, daysLimit))
+			b.WriteString(fmt.Sprintf(" and %s between (current_date+1)::timestamp and (current_date+%d)::timestamp)", collectingColumn, daysLimit))
 			return b.String()
 		}
 		b.WriteString(fmt.Sprintf(" and %s >= (current_date+1)::timestamp)", collectingColumn))

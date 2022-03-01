@@ -1,6 +1,7 @@
 package botDB
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -15,39 +16,49 @@ const (
 	statusLost     = "не выиграли"
 )
 
+const noTime = "--.--.-- --.--"
+
 // PurchaseRecord represents incoming data that needs
 // to be inserted/updated against DB
 type PurchaseRecord struct {
-	RegistryNumber        string `json:"registry_number"`
-	PurchaseSubject       string `json:"purchase_subject"`
-	PurchaseId            int64  `json:"purchase_id"`
-	PurchaseSubjectAbbr   string `json:"purchase_abbr,omitempty"`
-	PurchaseSubjectAbbrId int64
-	PurchaseType          string `json:"purchase_type"`
-	PurchaseTypeId        int64
-	// CollectingDateTime    string `json:"collecting_datetime"`
-	// ApprovalDateTime      string `json:"approval_datetime,omitempty"`
-	// BiddingDateTime       string `json:"bidding_datetime,omitempty"`
-	CollectingDateTime   time.Time `json:"collecting_datetime"`
-	ApprovalDateTime     time.Time `json:"approval_datetime,omitempty"`
-	BiddingDateTime      time.Time `json:"bidding_datetime,omitempty"`
-	Region               string    `json:"region"`
-	RegionId             int64
-	CustomerType         string `json:"customer_type,omitempty"`
-	CustomerTypeId       int64
-	MaxPrice             float64 `json:"max_price"`
-	ApplicationGuarantee float64 `json:"application_guarantee,omitempty"`
-	ContractGuarantee    float64 `json:"contract_guarantee,omitempty"`
-	Status               string  `json:"status"`
-	StatusId             int64
-	OurParticipants      string  `json:"our_participants,omitempty"`
-	Estimation           float64 `json:"estimation,omitempty"`
-	ETP                  string  `json:"etp,omitempty"`
-	ETPId                int64
-	Winner               string  `json:"winner,omitempty"`
-	WinnerPrice          float64 `json:"winner_price,omitempty"`
-	Participants         string  `json:"participants,omitempty"`
-	queryOpt             QueryOpt
+	RegistryNumber          string          `json:"registry_number"`
+	PurchaseSubject         string          `json:"purchase_subject"`
+	PurchaseId              int64           `json:"purchase_id"`
+	PurchaseSubjectAbbr     string          `json:"purchase_abbr,omitempty"`
+	PurchaseSubjectAbbrId   int64           `json:"-"`
+	PurchaseType            string          `json:"purchase_type"`
+	PurchaseTypeId          int64           `json:"-"`
+	CollectingDateTime      time.Time       `json:"collecting_datetime"`
+	ApprovalDateTime        time.Time       `json:"approval_datetime,omitempty"`
+	ApprovalDateTimeSql     sql.NullTime    `json:"-"`
+	BiddingDateTime         time.Time       `json:"bidding_datetime,omitempty"`
+	BiddingDateTimeSql      sql.NullTime    `json:"-"`
+	Region                  string          `json:"region"`
+	RegionId                int64           `json:"-"`
+	CustomerType            string          `json:"customer_type,omitempty"`
+	CustomerTypeId          int64           `json:"-"`
+	MaxPrice                float64         `json:"max_price"`
+	ApplicationGuarantee    float64         `json:"application_guarantee,omitempty"`
+	ApplicationGuaranteeSql sql.NullFloat64 `json:"-"`
+	ContractGuarantee       float64         `json:"contract_guarantee,omitempty"`
+	ContractGuaranteeSql    sql.NullFloat64 `json:"-"`
+	Status                  string          `json:"status"`
+	StatusSql               sql.NullString  `json:"-"`
+	StatusId                int64           `json:"-"`
+	OurParticipants         string          `json:"our_participants,omitempty"`
+	OurParticipantsSql      sql.NullString  `json:"-"`
+	Estimation              float64         `json:"estimation,omitempty"`
+	EstimationSql           sql.NullFloat64 `json:"-"`
+	ETP                     string          `json:"etp,omitempty"`
+	EtpSql                  sql.NullString  `json:"-"`
+	ETPId                   int64           `json:"-"`
+	Winner                  string          `json:"winner,omitempty"`
+	WinnerSql               sql.NullString  `json:"-"`
+	WinnerPrice             float64         `json:"winner_price,omitempty"`
+	WinnerPriceSql          sql.NullFloat64 `json:"-"`
+	Participants            string          `json:"participants,omitempty"`
+	ParticipantsSql         sql.NullString  `json:"-"`
+	queryOpt                QueryOpt        `json:"-"`
 }
 
 // Info returns string representation of record
@@ -62,10 +73,10 @@ func (p *PurchaseRecord) Info() (string, QueryOpt) {
 		return p.participateString(), p.queryOpt
 
 	case Today:
-		if p.Status == statusGo {
+		if p.StatusSql.String == statusGo || p.StatusSql.String == statusEstim {
 			return p.participateString(), TodayGo
 		}
-		return p.auctionString(), p.queryOpt
+		return p.auctionString(), TodayAuction
 
 	case FutureMoney:
 		return p.moneyString(), p.queryOpt
@@ -89,50 +100,56 @@ func (p *PurchaseRecord) truncNum() string {
 
 func (p *PurchaseRecord) generalString() string {
 
-	tc := p.CollectingDateTime.Format("02.01.2006 15:04")
-	tb := p.BiddingDateTime.Format("02.01.2006 15:04")
+	tc := p.CollectingDateTime.Format("02.01.2006 *15:04*")
+	tb := noTime
+	if p.BiddingDateTimeSql.Valid {
+		tb = p.BiddingDateTimeSql.Time.Format("02.01.2006 *15:04*")
+	}
 
-	return fmt.Sprintf("[%d] %s\n%s %s\n🔝 %.2f\n⏳ %v\n⏰ %v\n💸 %.2f\nСтатус: %s\nПлощадка: %s\n\n",
+	return fmt.Sprintf("*[%d]* _%s_\n%s %s\nНМЦК: *%.2f ₽* 🔝\nПодача: %v ⏳\nАукцион: %v ⏰\nОбеспечение: %.2f 💸\nСтатус: *%s*\nПлощадка: *%s*\n\n",
 		p.PurchaseId, p.RegistryNumber, p.Region, p.PurchaseSubjectAbbr,
-		p.MaxPrice, tc, tb, p.ApplicationGuarantee, p.Status, p.ETP)
+		p.MaxPrice, tc, tb, p.ApplicationGuaranteeSql.Float64, p.StatusSql.String, p.EtpSql.String)
 }
 
 func (p *PurchaseRecord) auctionString() string {
+	tb := noTime
+	if p.BiddingDateTimeSql.Valid {
+		tb = p.BiddingDateTimeSql.Time.Format("15:04")
+	}
 
-	t := p.BiddingDateTime.Format("15:04")
-
-	return fmt.Sprintf("[%d] %s %s %s\n⏰: %v | ⬇️: %.2f\n\n",
-		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, t, p.Estimation)
+	return fmt.Sprintf("*[%d]* %s *_%s %s_*\nВремя: *%v* ⏰\nРасчёт: *%.2f* ⬇️\nПлощадка: *%s*\n\n",
+		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, tb, p.EstimationSql.Float64, p.EtpSql.String)
 }
 
 func (p *PurchaseRecord) participateString() string {
+	var t string
+	if p.StatusSql.String == statusGo || p.StatusSql.String == statusEstim {
+		t = fmt.Sprintf("Подача до: *_%v_* ⏳", p.CollectingDateTime.Format("02.01.2006 15:04"))
+	} else {
+		t = fmt.Sprintf("Аукцион: *_%v_* ⏰", p.BiddingDateTimeSql.Time.Format("02.01.2006 15:04"))
+	}
 
-	t := p.CollectingDateTime.Format("02.01.2006 15:04")
-
-	return fmt.Sprintf("[%d] %s %s %s\n⏳: %v\n\n",
-		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, t)
+	return fmt.Sprintf("*[%d]* %s *_%s %s_*\n%s\nСтатус: *%s*\n\n",
+		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, t, p.StatusSql.String)
 }
 
 func (p *PurchaseRecord) pastString() string {
 	res := '🏆'
-	if p.Status == statusLost {
+	if p.StatusSql.String == statusLost {
 		res = '❌'
 	}
+	tb := noTime
+	if p.BiddingDateTimeSql.Valid {
+		tb = p.BiddingDateTimeSql.Time.Format("02.01.2006")
+	}
 
-	return fmt.Sprintf("[%d] %s %s %s --> %c \n\n",
-		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, res)
+	return fmt.Sprintf("*[%d]* *_%s %s %s_*\nДата проведения *_%v_*\n*Результат ->* %c \n\n",
+		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, tb, res)
 }
 
 func (p *PurchaseRecord) moneyString() string {
-	s := fmt.Sprintf("%s %s \n💸 %.2f\n\n",
-		p.Region, p.PurchaseSubjectAbbr, p.ApplicationGuarantee)
-
-	if p.Region == "" {
-		s = fmt.Sprintf("%s 💸 %.2f\n\n",
-			p.PurchaseSubjectAbbr, p.ApplicationGuarantee)
-	}
-
-	return s
+	return fmt.Sprintf("*%s*\nСо статусом *%s* -> *_%.2f ₽_* 💸\n\n",
+		p.OurParticipantsSql.String, p.StatusSql.String, p.ApplicationGuaranteeSql.Float64)
 }
 
 // setForeignKeys take reference map and check self id
@@ -177,22 +194,22 @@ func (p *PurchaseRecord) args(to tableOpt) []interface{} {
 	switch to {
 	case query:
 		return []interface{}{
-			&p.PurchaseId, &p.RegistryNumber, &p.PurchaseSubject,
-			&p.PurchaseSubjectAbbr, &p.PurchaseType, &p.CollectingDateTime,
-			&p.ApprovalDateTime, &p.BiddingDateTime, &p.Region, &p.CustomerType,
-			&p.MaxPrice, &p.ApplicationGuarantee, &p.ContractGuarantee, &p.Status,
-			&p.OurParticipants, &p.Estimation, &p.Winner, &p.WinnerPrice, &p.Participants,
+			&p.PurchaseId, &p.RegistryNumber, &p.PurchaseSubject, &p.PurchaseSubjectAbbr,
+			&p.PurchaseType, &p.CollectingDateTime, &p.ApprovalDateTimeSql,
+			&p.BiddingDateTimeSql, &p.Region, &p.CustomerType, &p.MaxPrice,
+			&p.ApplicationGuaranteeSql, &p.ContractGuaranteeSql, &p.StatusSql, &p.OurParticipantsSql,
+			&p.EstimationSql, &p.EtpSql, &p.WinnerSql, &p.WinnerPriceSql, &p.ParticipantsSql,
 		}
 	case queryMoney:
-		return []interface{}{&p.Region, &p.PurchaseSubjectAbbr, &p.ApplicationGuarantee}
+		return []interface{}{&p.OurParticipantsSql, &p.StatusSql, &p.ApplicationGuaranteeSql}
 	default:
 		return []interface{}{
-			p.RegistryNumber, p.PurchaseSubject, p.PurchaseSubjectAbbrId,
-			p.PurchaseTypeId, p.CollectingDateTime, p.ApprovalDateTime,
-			p.BiddingDateTime, p.RegionId, p.CustomerTypeId,
-			p.MaxPrice, p.ApplicationGuarantee, p.ContractGuarantee,
-			p.StatusId, p.OurParticipants, p.Estimation,
-			p.ETPId, p.Winner, p.WinnerPrice, p.Participants,
+			&p.RegistryNumber, &p.PurchaseSubject, &p.PurchaseSubjectAbbrId,
+			&p.PurchaseTypeId, &p.CollectingDateTime, &p.ApprovalDateTime,
+			&p.BiddingDateTime, &p.RegionId, &p.CustomerTypeId,
+			&p.MaxPrice, &p.ApplicationGuarantee, &p.ContractGuarantee,
+			&p.StatusId, &p.OurParticipants, &p.Estimation,
+			&p.ETPId, &p.Winner, &p.WinnerPrice, &p.Participants,
 		}
 	}
 }

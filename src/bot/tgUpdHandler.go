@@ -15,13 +15,15 @@ import (
 const (
 	unknownMsg     = `Извини, не знаю такой команды. Попробуй ➡️ */help*`
 	errorMsg       = "Извини 😥, не получилось выполнить команду"
-	invalidArgsMsg = "Извини, для команды введены неправильные аргументы 🤷"
-	hiMsg          = `Привет 👋 ➡️ */help* для справки`
+	invalidArgsMsg = "Извини, для команды введены неправильные аргументы 🤷\n" +
+		`➡️ */help* \-\[*_имя команды_*\]`
+	hiMsg          = "Привет 👋 ➡️ */help* для справки"
 	startMsg       = "Готов к работе ⚒️"
 	statusMsg      = "👌"
 	errorOptionMsg = "Неправильная опция команды\n" + `➡️ */help* \-\[*_имя команды_*\]` +
 		"\nдля справки по команде"
-	notFoundMsg = "Не нашел ничего по заданному id"
+	notFoundIdMsg = "Не нашел ничего по заданному id"
+	notFoundMsg   = "Похоже, что ничего нет\\.\\.\\. 🙃"
 )
 
 // command help message
@@ -123,34 +125,37 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 		return
 	}
 
-	var msgs []string
-
-	// choosing appropriate handler
-	switch u.Message.Command() {
-	case todayCmd:
-		msgs = t.todayCmdResponse(flags)
-	case futureCmd:
-		msgs = t.futureCmdResponse(flags)
-	case pastCmd:
-		msgs = t.pastCmdResponse(flags)
-	case helpCmd:
-		msgs = t.helpCmdResponse(flags)
-	case infoCmd:
-		msgs = t.infoCmdResponse(flags)
-	case startCmd:
-		msgs = []string{startMsg}
-	case statusCmd:
-		msgs = []string{statusMsg}
-	case hiCmd:
-		msgs = t.hiCmdResponse(u.Message)
-	case chatCmd:
-		msgs = []string{fmt.Sprint(u.Message.Chat.ID)}
-	default:
-		msgs = []string{unknownMsg}
-	}
+	// get responses from command handlers
+	msgs := t.responses(u, flags)
 
 	// sending responses
 	t.send(u.Message.Chat.ID, msgs...)
+}
+
+func (t *tgUpdHandler) responses(u *tgbotapi.Update, flags *flags) []string {
+	// choosing appropriate handler
+	switch u.Message.Command() {
+	case todayCmd:
+		return t.todayCmdResponse(flags)
+	case futureCmd:
+		return t.futureCmdResponse(flags)
+	case pastCmd:
+		return t.pastCmdResponse(flags)
+	case helpCmd:
+		return t.helpCmdResponse(flags)
+	case infoCmd:
+		return t.infoCmdResponse(flags)
+	case startCmd:
+		return []string{startMsg}
+	case statusCmd:
+		return []string{statusMsg}
+	case hiCmd:
+		return t.hiCmdResponse(u.Message)
+	case chatCmd:
+		return []string{fmt.Sprint(u.Message.Chat.ID)}
+	default:
+		return []string{unknownMsg}
+	}
 }
 
 // send is helper function that is responsible
@@ -239,10 +244,6 @@ func unknownArgsErr(f *flags) []string {
 // helpCmdResponse is the '/help' command handler
 func (t *tgUpdHandler) helpCmdResponse(f *flags) []string {
 
-	if f.set.NArg() > 0 {
-		return unknownArgsErr(f)
-	}
-
 	if f.set.NFlag() == 0 {
 		return []string{generalHelpMsg}
 	}
@@ -268,6 +269,7 @@ func (t *tgUpdHandler) helpCmdResponse(f *flags) []string {
 // todayCmdResponse is the '/t' command handler
 func (t *tgUpdHandler) todayCmdResponse(f *flags) []string {
 
+	// check for the garbage in arguments
 	if f.set.NArg() > 0 {
 		return unknownArgsErr(f)
 	}
@@ -282,7 +284,7 @@ func (t *tgUpdHandler) todayCmdResponse(f *flags) []string {
 		opts = append(opts, botDB.TodayAuction)
 	}
 	if f.gf {
-		opts = append(opts, botDB.Today)
+		opts = append(opts, botDB.TodayGo)
 	}
 
 	return t.query(0, opts...)
@@ -291,12 +293,9 @@ func (t *tgUpdHandler) todayCmdResponse(f *flags) []string {
 // futureCmdResponse is the '/f' command handler
 func (t *tgUpdHandler) futureCmdResponse(f *flags) []string {
 
+	// check for the garbage in arguments
 	if f.set.NArg() > 0 {
 		return unknownArgsErr(f)
-	}
-
-	if f.set.NFlag() == 0 {
-		return t.query(f.df, botDB.Future)
 	}
 
 	opts := make([]botDB.QueryOpt, 0, f.set.NFlag())
@@ -309,6 +308,10 @@ func (t *tgUpdHandler) futureCmdResponse(f *flags) []string {
 	}
 	if f.mf {
 		opts = append(opts, botDB.FutureMoney)
+	}
+
+	if len(opts) == 0 {
+		opts = append(opts, botDB.Future)
 	}
 
 	return t.query(f.df, opts...)
@@ -331,7 +334,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 	p, err := t.qm.QueryRow(id)
 	if err != nil {
 		if err == botDB.ErrNoRows {
-			return []string{notFoundMsg}
+			return []string{notFoundIdMsg}
 		}
 		log.Println(err)
 		return []string{errorMsg}
@@ -342,7 +345,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 
 // pastCmdResponse is the '/p' command handler
 func (t *tgUpdHandler) pastCmdResponse(f *flags) []string {
-
+	// check for the garbage in arguments
 	if f.set.NArg() > 0 {
 		return unknownArgsErr(f)
 	}
@@ -368,12 +371,19 @@ func (t *tgUpdHandler) query(daysLimit int, opts ...botDB.QueryOpt) []string {
 // database record and builds messages for the response
 func buildMessages(recs ...botDB.PurchaseRecord) []string {
 	if len(recs) == 0 {
-		return nil
+		return []string{notFoundMsg}
 	}
 
 	var b strings.Builder
 	var msgs []string
 	var q botDB.QueryOpt
+	// we need replacer to sanitize messages
+	// for telegram markdown syntax
+	r := strings.NewReplacer(
+		"[", "\\[", "]", "\\]", "(", "\\(", ")",
+		"\\)", "~", "\\~", "`", "\\`", ">", "\\>", "#",
+		"\\#", "+", "\\+", "-", "\\-", "=", "\\=", "|",
+		"\\|", "{", "\\{", "}", "\\}", ".", "\\.", "!", "\\!")
 
 	for i := range recs {
 
@@ -386,7 +396,7 @@ func buildMessages(recs ...botDB.PurchaseRecord) []string {
 		// if we encounter new query option
 		// than the current message is complete
 		if q != qr && i != 0 {
-			msgs = append(msgs, b.String())
+			msgs = append(msgs, r.Replace(b.String()))
 
 			// reseting builder and writing
 			// new message header
@@ -403,7 +413,7 @@ func buildMessages(recs ...botDB.PurchaseRecord) []string {
 	}
 
 	// appending the last message
-	msgs = append(msgs, b.String())
+	msgs = append(msgs, r.Replace(b.String()))
 
 	return msgs
 }
