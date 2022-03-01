@@ -100,13 +100,13 @@ func (p *PurchaseRecord) truncNum() string {
 
 func (p *PurchaseRecord) generalString() string {
 
-	tc := p.CollectingDateTime.Format("02.01.2006 *15:04*")
+	tc := p.CollectingDateTime.Format("02.01.2006 15:04")
 	tb := noTime
 	if p.BiddingDateTimeSql.Valid {
-		tb = p.BiddingDateTimeSql.Time.Format("02.01.2006 *15:04*")
+		tb = p.BiddingDateTimeSql.Time.Format("02.01.2006 15:04")
 	}
 
-	return fmt.Sprintf("*[%d]* _%s_\n%s %s\nНМЦК: *%.2f ₽* 🔝\nПодача: %v ⏳\nАукцион: %v ⏰\nОбеспечение: %.2f 💸\nСтатус: *%s*\nПлощадка: *%s*\n\n",
+	return fmt.Sprintf("*[%d]* _%s_\n%s *_%s_*\nНМЦК: *%.2f ₽* 🔝\nПодача: *%v* ⏳\nАукцион: *%v* ⏰\nОбеспечение: *%.2f* 💸\nСтатус: *%s*\nПлощадка: *%s*\n\n",
 		p.PurchaseId, p.RegistryNumber, p.Region, p.PurchaseSubjectAbbr,
 		p.MaxPrice, tc, tb, p.ApplicationGuaranteeSql.Float64, p.StatusSql.String, p.EtpSql.String)
 }
@@ -148,7 +148,7 @@ func (p *PurchaseRecord) pastString() string {
 }
 
 func (p *PurchaseRecord) moneyString() string {
-	return fmt.Sprintf("*%s*\nСо статусом *%s* -> *_%.2f ₽_* 💸\n\n",
+	return fmt.Sprintf("Участник: *%s*\nСо статусом *%s* -> *_%.2f ₽_* 💸\n\n",
 		p.OurParticipantsSql.String, p.StatusSql.String, p.ApplicationGuaranteeSql.Float64)
 }
 
