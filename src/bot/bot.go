@@ -20,6 +20,7 @@ type Config struct {
 	DbUpdateToken string
 	DB            *sql.DB
 	Chats         map[int64]bool
+	NotifChat     int64
 }
 
 // bot is the main controller
@@ -29,7 +30,9 @@ type bot struct {
 	api   *tgbotapi.BotAPI
 	dbh   dbUpdateHandler
 	tgh   tgUpdateHandler
+	ntf   notifier
 	chats map[int64]bool
+	done  chan struct{}
 }
 
 // databaseHandler is the logic responsible
@@ -45,6 +48,12 @@ type tgUpdateHandler interface {
 	handleUpdate(u *tgbotapi.Update)
 }
 
+// notifier is the logic responsible for
+// sending notifications to specific chat
+type notifier interface {
+	notify()
+}
+
 func initBot(c *Config) (*bot, error) {
 
 	botAPI, err := tgbotapi.NewBotAPI(c.BotToken)
@@ -54,16 +63,24 @@ func initBot(c *Config) (*bot, error) {
 
 	// bot.Debug = true
 
+	// create database update channel
+	dbUpd := make(chan struct{})
+	// create done channel for notifier
+	done := make(chan struct{})
+
 	m := botDB.NewModel(c.DB)
-	dh := newDbHandler(m)
+	dh := newDbHandler(m, dbUpd)
 	uh := newTgUpdHandler(m, botAPI)
+	n := newTgNotifier(m, botAPI, c.NotifChat, dbUpd, done)
 
 	return &bot{
 		name:  c.BotName,
 		api:   botAPI,
 		dbh:   dh,
 		tgh:   uh,
+		ntf:   n,
 		chats: c.Chats,
+		done:  done,
 	}, nil
 }
 
@@ -76,6 +93,9 @@ func Start(c *Config) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		close(bot.done)
+	}()
 
 	log.Printf("%s: Telegram\t->\tAuthorized on account: [%s]\n", bot.name, bot.api.Self.UserName)
 
@@ -84,7 +104,7 @@ func Start(c *Config) error {
 		return err
 	}
 
-	log.Printf("%s: Telegram\t->\tWebhook cheсk: [%s]\n", bot.name, msg)
+	log.Printf("%s: Telegram\t->\tWebhook check: [%s]\n", bot.name, msg)
 
 	updates := bot.api.ListenForWebhook("/" + bot.api.Token)
 
@@ -92,12 +112,15 @@ func Start(c *Config) error {
 
 	go http.ListenAndServe(":"+c.Port, nil)
 
+	// spin off the notifier in it's own routine
+	go bot.ntf.notify()
+
 	for update := range updates {
 		log.Printf("%s: Telegram\t->\tUpdate received: chatID-[%d], user-[%v], text[%s]\n",
 			bot.name, update.Message.Chat.ID, update.Message.From, update.Message.Text)
 
 		if !bot.chats[update.Message.Chat.ID] {
-			log.Printf("chatID-[%d] is not valid... skipped\n", update.Message.Chat.ID)
+			log.Printf("Bot\t->\tchatID-[%d] is not valid... skipped\n", update.Message.Chat.ID)
 			continue
 		}
 

@@ -13,7 +13,7 @@ import (
 
 // bot message
 const (
-	unknownMsg     = `Извини, не знаю такой команды. Попробуй ➡️ */help*`
+	unknownMsg     = `Извини, не знаю такой команды\. Попробуй ➡️ */help*`
 	errorMsg       = "Извини 😥, не получилось выполнить команду"
 	invalidArgsMsg = "Извини, для команды введены неправильные аргументы 🤷\n" +
 		`➡️ */help* \-\[*_имя команды_*\]`
@@ -120,7 +120,7 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 	// command line arguments
 	flags, err := parseMsgArgs(u.Message.CommandArguments())
 	if err != nil {
-		log.Println(err)
+		log.Printf("Telegram update handler\t->\terror due parsing message arguments [%s]\n", err.Error())
 		t.send(u.Message.Chat.ID, errorOptionMsg)
 		return
 	}
@@ -166,7 +166,7 @@ func (t *tgUpdHandler) send(chatID int64, msgs ...string) {
 	for i := range msgs {
 		m.Text = msgs[i]
 		if _, err := t.api.Send(m); err != nil {
-			log.Println(err)
+			log.Printf("Telegram update handler\t->\terror due sending response [%s]\n", err.Error())
 		}
 	}
 }
@@ -327,7 +327,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 
 	id, err := strconv.ParseInt(f.set.Arg(0), 10, 0)
 	if err != nil {
-		log.Println(err)
+		log.Printf("Telegram update handler\t->\terror due converting id [%s]\n", err.Error())
 		return []string{errorMsg}
 	}
 
@@ -336,7 +336,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 		if err == botDB.ErrNoRows {
 			return []string{notFoundIdMsg}
 		}
-		log.Println(err)
+		log.Printf("Telegram update handler\t->\terror due fetching record [%s]\n", err.Error())
 		return []string{errorMsg}
 	}
 
@@ -360,7 +360,7 @@ func (t *tgUpdHandler) query(daysLimit int, opts ...botDB.QueryOpt) []string {
 
 	recs, err := t.qm.Query(daysLimit, opts...) // gets results
 	if err != nil {
-		log.Println(err)
+		log.Printf("Telegram update handler\t->\terror due fetching records [%s]\n", err.Error())
 		return []string{errorMsg}
 	}
 

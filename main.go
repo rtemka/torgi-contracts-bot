@@ -22,11 +22,10 @@ var (
 	chats         string
 	botToken      string
 	dbUpdateToken string
+	notifChat     string
 )
 
-// getEnvs gets all environment vars,
-// they all must be set for the programm to
-// work correctly
+// getEnvs gets all required environment vars
 func getEnvs() error {
 	port = os.Getenv("PORT")
 	if port == "" {
@@ -48,6 +47,11 @@ func getEnvs() error {
 	if dbUpdateToken == "" {
 		return fmt.Errorf("$DB_UPDATE_TOKEN must be set")
 	}
+	notifChat = os.Getenv("NOTIF_CHAT")
+	if dbUpdateToken == "" {
+		return fmt.Errorf("$NOTIF_CHAT must be set")
+	}
+
 	return nil
 }
 
@@ -74,6 +78,11 @@ func main() {
 		validChats[n] = true
 	}
 
+	nChat, err := strconv.ParseInt(notifChat, 10, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	c := trbot.Config{
 		BotName:       botName,
 		Port:          port,
@@ -82,6 +91,7 @@ func main() {
 		DbUpdateToken: dbUpdateToken,
 		DB:            db,
 		Chats:         validChats,
+		NotifChat:     nChat,
 	}
 
 	err = trbot.Start(&c)

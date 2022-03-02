@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 // Handler messages
@@ -19,6 +20,7 @@ const (
 // manager
 type dbHandler struct {
 	dbManager dbManager
+	upd       chan<- struct{}
 }
 
 // dbManager is responsible for the execution
@@ -28,24 +30,36 @@ type dbManager interface {
 	Delete() error
 }
 
-func newDbHandler(m dbManager) *dbHandler {
-	return &dbHandler{dbManager: m}
+func newDbHandler(m dbManager, upd chan<- struct{}) *dbHandler {
+	return &dbHandler{dbManager: m, upd: upd}
 }
 
 func (d dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	// check if request has json body
 	headerContentType := r.Header.Get("Content-Type")
 	if headerContentType != "application/json" {
 		writeResponse(w, "Content Type is not application/json", http.StatusUnsupportedMediaType)
 		return
 	}
 
+	// pass body to database handler
 	err := d.dbManager.Upsert(r.Body)
 	if err != nil {
-		log.Println(err)
+		log.Printf("Database update handler\t->\terror due updating records [%s]\n", err.Error())
 		writeResponse(w, dbUpdateFailure, http.StatusInternalServerError)
 		return
 	}
+
+	go func() {
+		select {
+		// inform to update channel
+		case d.upd <- struct{}{}:
+		// or wait for a timeout and go off
+		case <-time.After(time.Second * 10):
+			return
+		}
+	}()
 
 	writeResponse(w, dbUpdateSuccess, http.StatusOK)
 }
