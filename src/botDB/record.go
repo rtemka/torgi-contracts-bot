@@ -116,9 +116,14 @@ func (p *PurchaseRecord) auctionString() string {
 	if p.BiddingDateTimeSql.Valid {
 		tb = p.BiddingDateTimeSql.Time.Format("15:04")
 	}
+	ptc := "--не установлен--"
+	if p.OurParticipantsSql.Valid {
+		ptc = p.OurParticipantsSql.String
+	}
 
-	return fmt.Sprintf("*[%d]* %s *_%s %s_*\nВремя: *%v* ⏰\nРасчёт: *%.2f* ⬇️\nПлощадка: *%s*\n\n",
-		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, tb, p.EstimationSql.Float64, p.EtpSql.String)
+	return fmt.Sprintf("*[%d]* %s *_%s %s_*\nВремя: *%v* ⏰\nРасчёт: *%.2f* ⬇️\nПлощадка: *%s*\nУчастник: *%s*\n\n",
+		p.PurchaseId, p.Region, p.truncNum(), p.PurchaseSubjectAbbr, tb,
+		p.EstimationSql.Float64, p.EtpSql.String, ptc)
 }
 
 func (p *PurchaseRecord) participateString() string {

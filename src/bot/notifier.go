@@ -2,6 +2,7 @@ package bot
 
 import (
 	"log"
+	"os"
 	"time"
 	"trbot/src/botDB"
 
@@ -10,7 +11,7 @@ import (
 
 // how long before the occurrence of the event
 // we must send notification
-const howLongBefore = time.Minute * 5
+const howLongBefore = time.Minute * 7
 
 const utcOffset = time.Hour * 3
 
@@ -18,6 +19,7 @@ const idlingDuration = time.Hour * 24
 
 // tgNotifier holds the notification logic
 type tgNotifier struct {
+	name string
 	qm   dbQueryManager
 	api  *tgbotapi.BotAPI
 	recs []botDB.PurchaseRecord
@@ -26,8 +28,9 @@ type tgNotifier struct {
 	done <-chan struct{}
 }
 
-func newTgNotifier(qm dbQueryManager, api *tgbotapi.BotAPI, chat int64, upd <-chan struct{}, done <-chan struct{}) *tgNotifier {
-	return &tgNotifier{qm: qm, recs: nil, chat: chat, upd: upd, done: done}
+func newTgNotifier(name string, qm dbQueryManager,
+	api *tgbotapi.BotAPI, chat int64, upd <-chan struct{}, done <-chan struct{}) *tgNotifier {
+	return &tgNotifier{name: name, qm: qm, api: api, recs: nil, chat: chat, upd: upd, done: done}
 }
 
 // notify will send notification to specified telegram chat
@@ -35,18 +38,15 @@ func newTgNotifier(qm dbQueryManager, api *tgbotapi.BotAPI, chat int64, upd <-ch
 func (n *tgNotifier) notify() {
 	// set today's records
 	if err := n.todays(); err != nil {
-		log.Printf("Notifier\t->\terror due fetching records: [%s]\n", err.Error())
+		log.SetOutput(os.Stderr)
+		log.Printf("%serror due fetching records: [%s]\n", n.name, err.Error())
 		return
 	}
-
-	// clean up
-	defer func() {
-		n.recs = nil
-	}()
 
 	// get remaining time to the closest
 	// event and record index of that event
 	i, d := n.nearestEventTime()
+	n.logNearestEventTime(i, d)
 
 	for {
 		select {
@@ -59,11 +59,15 @@ func (n *tgNotifier) notify() {
 		case <-n.upd:
 			// update records
 			if err := n.todays(); err != nil {
-				log.Printf("Notifier\t->\terror due fetching records: [%s]\n", err.Error())
+				log.SetOutput(os.Stderr)
+				log.Printf("%serror due fetching records: [%s]\n", n.name, err.Error())
+				return
 			}
+			log.Printf("%sgot update\n", n.name)
 			// update remaining time to next event
 			// and record index of that event
 			i, d = n.nearestEventTime()
+			n.logNearestEventTime(i, d)
 
 		// if remaining time is expired, we notify
 		case <-time.After(d):
@@ -72,18 +76,18 @@ func (n *tgNotifier) notify() {
 				continue
 			}
 
-			txt, _ := n.recs[i].Info()
-			msg := tgbotapi.NewMessage(n.chat, txt)
-
-			if _, err := n.api.Send(msg); err != nil {
-				log.Printf("Notifier\t->\terror due sending notification: [%s]\n", err.Error())
-			}
+			send(n.api, n.chat, buildMessages(n.recs[i])...)
 
 			// dequeue the record we notified about
-			n.recs = n.recs[i:]
+			if len(n.recs) > 1 {
+				n.recs = n.recs[i+1:]
+			} else {
+				n.recs = nil // if it's last
+			}
 			// update remaining time to next event
 			// and record index of that event
 			i, d = n.nearestEventTime()
+			n.logNearestEventTime(i, d)
 		}
 	}
 
@@ -97,10 +101,12 @@ func (n *tgNotifier) nearestEventTime() (int, time.Duration) {
 	now := time.Now().Add(utcOffset)
 
 	for i := range n.recs {
-		t := n.recs[i].BiddingDateTimeSql.Time.Add(utcOffset)
+		t := n.recs[i].BiddingDateTimeSql.Time
+
 		if t.Add(-howLongBefore).After(now) {
-			return i, now.Sub(t.Add(-howLongBefore))
+			return i, t.Add(-howLongBefore).Sub(now)
 		}
+
 		if t.After(now) {
 			return i, 0
 		}
@@ -108,12 +114,25 @@ func (n *tgNotifier) nearestEventTime() (int, time.Duration) {
 	return -1, idlingDuration
 }
 
-// todays gets the today's records from the DB
+// todays gets the today's records from the DB.
+// The db returns records in asc order
 func (n *tgNotifier) todays() error {
 	var err error
 	n.recs, err = n.qm.Query(0, botDB.TodayAuction)
 	if err != nil {
 		return err
 	}
+
 	return nil
+}
+
+func (n *tgNotifier) logNearestEventTime(idx int, nt time.Duration) {
+	if idx < 0 {
+		log.Printf("%sno nearest events; next check in [%s]\n", n.name, nt)
+		return
+	}
+
+	log.Printf("%snearest event is [%s, %s, %s, %s]; remaining time to notification [%s]\n",
+		n.name, n.recs[idx].RegistryNumber, n.recs[idx].PurchaseType,
+		n.recs[idx].EtpSql.String, n.recs[idx].BiddingDateTimeSql.Time, nt)
 }

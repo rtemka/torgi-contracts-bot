@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"trbot/src/botDB"
@@ -19,11 +20,10 @@ const (
 		`➡️ */help* \-\[*_имя команды_*\]`
 	hiMsg          = "Привет 👋 ➡️ */help* для справки"
 	startMsg       = "Готов к работе ⚒️"
-	statusMsg      = "👌"
+	statusMsg      = "Все ок\\!"
 	errorOptionMsg = "Неправильная опция команды\n" + `➡️ */help* \-\[*_имя команды_*\]` +
 		"\nдля справки по команде"
 	notFoundIdMsg = "Не нашел ничего по заданному id"
-	notFoundMsg   = "Похоже, что ничего нет\\.\\.\\. 🙃"
 )
 
 // command help message
@@ -90,9 +90,6 @@ const (
 	daysKeyUsg    = "ограничивает выборку на NUM дней"
 )
 
-// telegram message formatting mode
-const parseMode = "MarkdownV2"
-
 // dbQueryManager is responsible
 // for the retrieving info from database
 type dbQueryManager interface {
@@ -102,12 +99,13 @@ type dbQueryManager interface {
 
 // tgUpdHandler processes incoming telegram updates
 type tgUpdHandler struct {
-	api *tgbotapi.BotAPI
-	qm  dbQueryManager
+	name string
+	api  *tgbotapi.BotAPI
+	qm   dbQueryManager
 }
 
-func newTgUpdHandler(qm dbQueryManager, api *tgbotapi.BotAPI) *tgUpdHandler {
-	return &tgUpdHandler{qm: qm, api: api}
+func newTgUpdHandler(name string, qm dbQueryManager, api *tgbotapi.BotAPI) *tgUpdHandler {
+	return &tgUpdHandler{name: name, qm: qm, api: api}
 }
 
 // handleUpdate redirects incoming update to appropriate handler
@@ -115,13 +113,14 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 	if !u.Message.IsCommand() {
 		return
 	}
+	log.SetOutput(os.Stderr)
 
 	// we parse flags from this message as if it was
 	// command line arguments
 	flags, err := parseMsgArgs(u.Message.CommandArguments())
 	if err != nil {
-		log.Printf("Telegram update handler\t->\terror due parsing message arguments [%s]\n", err.Error())
-		t.send(u.Message.Chat.ID, errorOptionMsg)
+		log.Printf("%serror due parsing message arguments [%s]\n", t.name, err.Error())
+		send(t.api, u.Message.Chat.ID, errorOptionMsg)
 		return
 	}
 
@@ -129,7 +128,7 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 	msgs := t.responses(u, flags)
 
 	// sending responses
-	t.send(u.Message.Chat.ID, msgs...)
+	send(t.api, u.Message.Chat.ID, msgs...)
 }
 
 func (t *tgUpdHandler) responses(u *tgbotapi.Update, flags *flags) []string {
@@ -155,19 +154,6 @@ func (t *tgUpdHandler) responses(u *tgbotapi.Update, flags *flags) []string {
 		return []string{fmt.Sprint(u.Message.Chat.ID)}
 	default:
 		return []string{unknownMsg}
-	}
-}
-
-// send is helper function that is responsible
-// for sending responses
-func (t *tgUpdHandler) send(chatID int64, msgs ...string) {
-	m := tgbotapi.NewMessage(chatID, "")
-	m.ParseMode = parseMode
-	for i := range msgs {
-		m.Text = msgs[i]
-		if _, err := t.api.Send(m); err != nil {
-			log.Printf("Telegram update handler\t->\terror due sending response [%s]\n", err.Error())
-		}
 	}
 }
 
@@ -327,7 +313,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 
 	id, err := strconv.ParseInt(f.set.Arg(0), 10, 0)
 	if err != nil {
-		log.Printf("Telegram update handler\t->\terror due converting id [%s]\n", err.Error())
+		log.Printf("%serror due converting id [%s]\n", t.name, err.Error())
 		return []string{errorMsg}
 	}
 
@@ -336,7 +322,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 		if err == botDB.ErrNoRows {
 			return []string{notFoundIdMsg}
 		}
-		log.Printf("Telegram update handler\t->\terror due fetching record [%s]\n", err.Error())
+		log.Printf("%serror due fetching record [%s]\n", t.name, err.Error())
 		return []string{errorMsg}
 	}
 
@@ -360,60 +346,9 @@ func (t *tgUpdHandler) query(daysLimit int, opts ...botDB.QueryOpt) []string {
 
 	recs, err := t.qm.Query(daysLimit, opts...) // gets results
 	if err != nil {
-		log.Printf("Telegram update handler\t->\terror due fetching records [%s]\n", err.Error())
+		log.Printf("%serror due fetching records [%s]\n", t.name, err.Error())
 		return []string{errorMsg}
 	}
 
 	return buildMessages(recs...) // passes results
-}
-
-// buildMessages is the helper method that interacts with
-// database record and builds messages for the response
-func buildMessages(recs ...botDB.PurchaseRecord) []string {
-	if len(recs) == 0 {
-		return []string{notFoundMsg}
-	}
-
-	var b strings.Builder
-	var msgs []string
-	var q botDB.QueryOpt
-	// we need replacer to sanitize messages
-	// for telegram markdown syntax
-	r := strings.NewReplacer(
-		"[", "\\[", "]", "\\]", "(", "\\(", ")",
-		"\\)", "~", "\\~", "`", "\\`", ">", "\\>", "#",
-		"\\#", "+", "\\+", "-", "\\-", "=", "\\=", "|",
-		"\\|", "{", "\\{", "}", "\\}", ".", "\\.", "!", "\\!")
-
-	for i := range recs {
-
-		// gets info string from the record
-		// and also a query option
-		s, qr := recs[i].Info()
-		// query option helps us to create
-		// messages separated by type
-
-		// if we encounter new query option
-		// than the current message is complete
-		if q != qr && i != 0 {
-			msgs = append(msgs, r.Replace(b.String()))
-
-			// reseting builder and writing
-			// new message header
-			b.Reset()
-			b.WriteString(qr.String())
-		} else if q != qr {
-			// if its first record
-			// we only write header
-			b.WriteString(qr.String())
-		}
-
-		b.WriteString(s)
-		q = qr
-	}
-
-	// appending the last message
-	msgs = append(msgs, r.Replace(b.String()))
-
-	return msgs
 }

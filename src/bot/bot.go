@@ -69,9 +69,9 @@ func initBot(c *Config) (*bot, error) {
 	done := make(chan struct{})
 
 	m := botDB.NewModel(c.DB)
-	dh := newDbHandler(m, dbUpd)
-	uh := newTgUpdHandler(m, botAPI)
-	n := newTgNotifier(m, botAPI, c.NotifChat, dbUpd, done)
+	dh := newDbHandler(c.BotName+": [DB Update Handler]\t->\t", m, dbUpd)
+	uh := newTgUpdHandler(c.BotName+": [Telegram Update Handler]\t->\t", m, botAPI)
+	n := newTgNotifier(c.BotName+": [Notifier]\t->\t", m, botAPI, c.NotifChat, dbUpd, done)
 
 	return &bot{
 		name:  c.BotName,
@@ -97,14 +97,14 @@ func Start(c *Config) error {
 		close(bot.done)
 	}()
 
-	log.Printf("%s: Telegram\t->\tAuthorized on account: [%s]\n", bot.name, bot.api.Self.UserName)
+	log.Printf("%s: [Telegram]\t->\tAuthorized on account: [%s]\n", bot.name, bot.api.Self.UserName)
 
 	msg, err := bot.checkWebhook(c)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("%s: Telegram\t->\tWebhook check: [%s]\n", bot.name, msg)
+	log.Printf("%s: [Telegram]\t->\tWebhook check: [%s]\n", bot.name, msg)
 
 	updates := bot.api.ListenForWebhook("/" + bot.api.Token)
 
@@ -116,11 +116,12 @@ func Start(c *Config) error {
 	go bot.ntf.notify()
 
 	for update := range updates {
-		log.Printf("%s: Telegram\t->\tUpdate received: chatID-[%d], user-[%v], text[%s]\n",
+
+		log.Printf("%s: [Telegram]\t->\tUpdate received: chatID-[%d], user-[%v], text[%s]\n",
 			bot.name, update.Message.Chat.ID, update.Message.From, update.Message.Text)
 
 		if !bot.chats[update.Message.Chat.ID] {
-			log.Printf("Bot\t->\tchatID-[%d] is not valid... skipped\n", update.Message.Chat.ID)
+			log.Printf("%s: [Telegram]\t->\tchatID-[%d] is not valid... skipped\n", bot.name, update.Message.Chat.ID)
 			continue
 		}
 
