@@ -54,6 +54,8 @@ func (d dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("%s%s\n", d.name, dbUpdateSuccess)
+
 	go func() {
 		select {
 		// inform to update channel
