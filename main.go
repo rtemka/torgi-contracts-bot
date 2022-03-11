@@ -22,6 +22,7 @@ var (
 	chats         string
 	botToken      string
 	dbUpdateToken string
+	uptimeToken   string
 	notifChat     string
 )
 
@@ -50,6 +51,10 @@ func getEnvs() error {
 	notifChat = os.Getenv("NOTIF_CHAT")
 	if dbUpdateToken == "" {
 		return fmt.Errorf("$NOTIF_CHAT must be set")
+	}
+	uptimeToken = os.Getenv("UPTIME_TOKEN")
+	if dbUpdateToken == "" {
+		return fmt.Errorf("$UPTIME_TOKEN must be set")
 	}
 
 	return nil
@@ -92,6 +97,7 @@ func main() {
 		DB:            db,
 		Chats:         validChats,
 		NotifChat:     nChat,
+		UptimeToken:   uptimeToken,
 	}
 
 	err = trbot.Start(&c)

@@ -21,6 +21,7 @@ type Config struct {
 	DB            *sql.DB
 	Chats         map[int64]bool
 	NotifChat     int64
+	UptimeToken   string
 }
 
 // bot is the main controller
@@ -106,9 +107,11 @@ func Start(c *Config) error {
 
 	log.Printf("%s: [Telegram]\t->\tWebhook check: [%s]\n", bot.name, msg)
 
-	updates := bot.api.ListenForWebhook("/" + bot.api.Token)
+	updates := bot.api.ListenForWebhook("/" + bot.api.Token) // handle telegram webhook update
 
-	http.Handle("/"+c.DbUpdateToken, bot.dbh)
+	http.Handle("/"+c.DbUpdateToken, bot.dbh) // handle DB update
+
+	http.Handle("/"+c.UptimeToken, http.HandlerFunc(bot.uptimeHandler)) // handle uptime check
 
 	go http.ListenAndServe(":"+c.Port, nil)
 
@@ -148,4 +151,17 @@ func (bot *bot) checkWebhook(c *Config) (string, error) {
 	}
 
 	return "new webhook installed", nil
+}
+
+// uptimeHandler recieves uptime call from external resource
+// such as https://uptimerobot.com/ to keep application alive,
+// because heroku will force app to sleep when it's idling
+func (b *bot) uptimeHandler(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, err := w.Write([]byte{})
+	if err != nil {
+		log.Printf("%s: [Uptime handler]\t->\tuptime checkup failure [%s]\n", b.name, err.Error())
+		return
+	}
+	log.Printf("%s: [Uptime handler]\t->\tuptime checkup success\n", b.name)
 }
