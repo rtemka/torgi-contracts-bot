@@ -11,7 +11,7 @@ import (
 
 // how long before the occurrence of the event
 // we must send notification
-const howLongBefore = time.Minute * 7
+const howLongBefore = time.Minute * 10
 
 const utcOffset = time.Hour * 3
 
