@@ -123,12 +123,12 @@ func Start(c *Config) error {
 		log.Printf("%s: [Telegram]\t->\tUpdate received: chatID-[%d], user-[%v], text[%s]\n",
 			bot.name, update.Message.Chat.ID, update.Message.From, update.Message.Text)
 
-		if !bot.chats[update.Message.Chat.ID] {
+		if bot.chats[update.Message.Chat.ID] {
+			go bot.tgh.handleUpdate(&update)
+		} else {
 			log.Printf("%s: [Telegram]\t->\tchatID-[%d] is not valid... skipped\n", bot.name, update.Message.Chat.ID)
-			continue
 		}
 
-		go bot.tgh.handleUpdate(&update)
 	}
 
 	return nil
