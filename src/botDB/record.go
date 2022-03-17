@@ -16,7 +16,7 @@ const (
 	statusLost     = "не выиграли"
 )
 
-const noTime = "--.--.-- --.--"
+const noTime = "xx.xx.xx xx.xx"
 
 // PurchaseRecord represents incoming data that needs
 // to be inserted/updated against DB

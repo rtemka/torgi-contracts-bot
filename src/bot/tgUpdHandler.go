@@ -37,19 +37,19 @@ const (
 	todayHelpMsg = `*Имя команды:       /` + todayCmd + "\n" + `Использование:   /` + todayCmd + `*    \[*_опции_*\]\.\.\.` +
 		"\n" + `*Описание:*` + "\n" + `*/` + todayCmd + `* значит '*_today_*' т\.е '*_сегодня_*'` +
 		"\nПоказывает все ожидаемые сегодня торги и заявки, которые нужно подать\n" +
-		`*Опции:*` + "\n" + `*_\-` + auctionKey + `, \-\-` + auctionKeyLong + `_*    ` + auctionKeyUsg + "\n" +
-		`*_\-` + goKey + `, \-\-` + goKeyLong + `_*           ` + goKeyUsg
+		`*Опции:*` + "\n" + `*_\-` + auctionKey + `, \-` + auctionKeyLong + `_*    ` + auctionKeyUsg + "\n" +
+		`*_\-` + goKey + `, \-` + goKeyLong + `_*           ` + goKeyUsg
 	futureHelpMsg = `*Имя команды:       /` + futureCmd + "\n" + `Использование:   /` + futureCmd + `*    \[*_опции_*\]\.\.\. *_\=NUM_*` +
 		"\n" + `*Описание:*` + "\n" + `*/` + futureCmd + `* значит '*_future_*' т\.е '*_будущее_*'` +
 		"\nПоказывает все будущие аукционы и заявки, а также суммы обеспечения заявок\n" +
-		`*Опции:*` + "\n" + `*_\-` + auctionKey + `, \-\-` + auctionKeyLong + `_*    ` + auctionKeyUsg + "\n" +
-		`*_\-` + goKey + `, \-\-` + goKeyLong + `_*           ` + goKeyUsg + "\n" +
-		`*_\-` + moneyKey + `, \-\-` + moneyKeyLong + `_*       ` + moneyKeyUsg + "\n" +
-		`*_\-` + daysKey + `, \-\-` + daysKeyLong + `\=NUM_* ` + daysKeyUsg + " вперед"
+		`*Опции:*` + "\n" + `*_\-` + auctionKey + `, \-` + auctionKeyLong + `_*    ` + auctionKeyUsg + "\n" +
+		`*_\-` + goKey + `, \-` + goKeyLong + `_*           ` + goKeyUsg + "\n" +
+		`*_\-` + moneyKey + `, \-` + moneyKeyLong + `_*       ` + moneyKeyUsg + "\n" +
+		`*_\-` + daysKey + `, \-` + daysKeyLong + `\=NUM_* ` + daysKeyUsg + " вперед"
 	pastHelpMsg = `*Имя команды:       /` + pastCmd + "\n" + `Использование:   /` + pastCmd + `*    \[*_опции_*\]\.\.\. *_\=NUM_*` +
 		"\n" + `*Описание:*` + "\n" +
 		`*/` + pastCmd + `* значит '*_past_*' т\.е '*_прошлое_*'` + "\nПоказывает результаты прошедших закупок\n" +
-		`*Опции:*` + "\n" + `*_\-` + daysKey + `, \-\-` + daysKeyLong + `\=NUM_* ` + daysKeyUsg + " назад"
+		`*Опции:*` + "\n" + `*_\-` + daysKey + `, \-` + daysKeyLong + `\=NUM_* ` + daysKeyUsg + " назад"
 	infoHelpMsg = `*Имя команды:      /` + infoCmd + "\n" + `Использование:   /` + infoCmd + `    \=ID*` +
 		"\n" + `*Описание:*` + "\n" + `*/` + infoCmd + `* Показывает информацию по конкретной закупке` + "\n" +
 		`В выводе других команд есть значение в форме \[*_ID_*\]\.` + "\n" +
