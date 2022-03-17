@@ -153,6 +153,9 @@ func (p *PurchaseRecord) pastString() string {
 }
 
 func (p *PurchaseRecord) moneyString() string {
+	if p.OurParticipantsSql.String == "" {
+		p.OurParticipantsSql.String = "--не установлен--"
+	}
 	return fmt.Sprintf("Участник: *%s*\nСо статусом *%s* -> *_%.2f ₽_* 💸\n\n",
 		p.OurParticipantsSql.String, p.StatusSql.String, p.ApplicationGuaranteeSql.Float64)
 }
