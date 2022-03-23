@@ -20,7 +20,7 @@ const (
 // that it's json and pass requests body to database
 // manager
 type dbHandler struct {
-	name      string
+	logger    *log.Logger
 	dbManager dbManager
 	upd       chan<- struct{}
 }
@@ -32,8 +32,8 @@ type dbManager interface {
 	Delete() error
 }
 
-func newDbHandler(name string, m dbManager, upd chan<- struct{}) *dbHandler {
-	return &dbHandler{name: name, dbManager: m, upd: upd}
+func newDbHandler(logger *log.Logger, m dbManager, upd chan<- struct{}) *dbHandler {
+	return &dbHandler{logger: logger, dbManager: m, upd: upd}
 }
 
 func (d dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -48,13 +48,13 @@ func (d dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// pass body to database handler
 	err := d.dbManager.Upsert(r.Body)
 	if err != nil {
-		log.SetOutput(os.Stderr)
-		log.Printf("%serror due updating records [%s]\n", d.name, err.Error())
+		d.logger.SetOutput(os.Stderr)
+		d.logger.Printf("error due updating records [%v]\n", err)
 		writeResponse(w, dbUpdateFailure, http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("%s%s\n", d.name, dbUpdateSuccess)
+	d.logger.Println(dbUpdateSuccess)
 
 	go func() {
 		select {

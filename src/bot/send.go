@@ -1,7 +1,7 @@
 package bot
 
 import (
-	"log"
+	"fmt"
 	"strings"
 	botDB "trbot/src/botDB"
 
@@ -16,15 +16,16 @@ const notFoundMsg = "Похоже, что ничего нет\\.\\.\\. 🙃"
 
 // send is helper function that is responsible
 // for sending responses to the telegram chat
-func send(api *tgbotapi.BotAPI, chatID int64, msgs ...string) {
+func send(api *tgbotapi.BotAPI, chatID int64, msgs ...string) error {
 	m := tgbotapi.NewMessage(chatID, "")
 	m.ParseMode = parseMode
 	for i := range msgs {
 		m.Text = msgs[i]
 		if _, err := api.Send(m); err != nil {
-			log.Printf("Telegram\t->\terror due sending response [%s]\n", err.Error())
+			return fmt.Errorf("error due sending response [%v]", err)
 		}
 	}
+	return nil
 }
 
 // buildMessages is the helper function that interacts with
@@ -54,7 +55,7 @@ func buildMessages(recs ...botDB.PurchaseRecord) []string {
 		// messages separated by type
 
 		// if we encounter new query option
-		// than the current message is complete
+		// then the current message is complete
 		if q != qr && i != 0 {
 			msgs = append(msgs, r.Replace(b.String()))
 

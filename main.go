@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	appURL  = "https://torgi-contracts-bot.herokuapp.com"
 	botName = "torgi-contracts-bot"
 )
 
 // environment variable
 var (
+	appURL        string
 	port          string
 	dbParams      string
 	chats         string
@@ -28,6 +28,10 @@ var (
 
 // getEnvs gets all required environment vars
 func getEnvs() error {
+	appURL = os.Getenv("APP_URL")
+	if port == "" {
+		return fmt.Errorf("$APP_URL must be set")
+	}
 	port = os.Getenv("PORT")
 	if port == "" {
 		return fmt.Errorf("$PORT must be set")
@@ -60,34 +64,58 @@ func getEnvs() error {
 	return nil
 }
 
+// parseValidChats returns chats map parsed from
+// environment variable. This function expects that provided
+// variable is a string with space separated chat id's.
+func parseValidChats(chats string) (map[int64]bool, error) {
+	s := strings.Split(chats, " ")
+	validChats := make(map[int64]bool, len(s))
+
+	for i := range s {
+		n, err := parseChat(s[i])
+		if err != nil {
+			return nil, err
+		}
+		validChats[n] = true
+	}
+	return validChats, nil
+}
+
+func parseChat(chat string) (int64, error) {
+	n, err := strconv.ParseInt(chat, 10, 0)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func main() {
 
+	// get all required environment vars
 	if err := getEnvs(); err != nil {
 		log.Fatal(err)
 	}
 
+	// establish database connection
 	db, err := botDB.OpenDB(dbParams)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	s := strings.Split(chats, " ")
-	validChats := make(map[int64]bool, len(s))
-
-	for i := range s {
-		n, err := strconv.ParseInt(s[i], 10, 0)
-		if err != nil {
-			log.Fatal(err)
-		}
-		validChats[n] = true
-	}
-
-	nChat, err := strconv.ParseInt(notifChat, 10, 0)
+	// parse allowed chats from environment
+	validChats, err := parseValidChats(chats)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// parse notification chat
+	nChat, err := parseChat(notifChat)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// set up configuration for the bot
 	c := trbot.Config{
 		BotName:       botName,
 		Port:          port,

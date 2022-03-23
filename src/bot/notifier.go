@@ -19,18 +19,18 @@ const idlingDuration = time.Hour * 24
 
 // tgNotifier holds the notification logic
 type tgNotifier struct {
-	name string
-	qm   dbQueryManager
-	api  *tgbotapi.BotAPI
-	recs []botDB.PurchaseRecord
-	chat int64
-	upd  <-chan struct{}
-	done <-chan struct{}
+	logger *log.Logger
+	qm     dbQueryManager
+	api    *tgbotapi.BotAPI
+	recs   []botDB.PurchaseRecord
+	chat   int64
+	upd    <-chan struct{}
+	done   <-chan struct{}
 }
 
-func newTgNotifier(name string, qm dbQueryManager,
+func newTgNotifier(logger *log.Logger, qm dbQueryManager,
 	api *tgbotapi.BotAPI, chat int64, upd <-chan struct{}, done <-chan struct{}) *tgNotifier {
-	return &tgNotifier{name: name, qm: qm, api: api, recs: nil, chat: chat, upd: upd, done: done}
+	return &tgNotifier{logger: logger, qm: qm, api: api, recs: nil, chat: chat, upd: upd, done: done}
 }
 
 // notify will send notification to specified telegram chat
@@ -38,8 +38,8 @@ func newTgNotifier(name string, qm dbQueryManager,
 func (n *tgNotifier) notify() {
 	// set today's records
 	if err := n.todays(); err != nil {
-		log.SetOutput(os.Stderr)
-		log.Printf("%serror due fetching records: [%s]\n", n.name, err.Error())
+		n.logger.SetOutput(os.Stderr)
+		n.logger.Printf("error due fetching records: [%v]\n", err)
 		return
 	}
 
@@ -59,11 +59,11 @@ func (n *tgNotifier) notify() {
 		case <-n.upd:
 			// update records
 			if err := n.todays(); err != nil {
-				log.SetOutput(os.Stderr)
-				log.Printf("%serror due fetching records: [%s]\n", n.name, err.Error())
+				n.logger.SetOutput(os.Stderr)
+				n.logger.Printf("error due fetching records: [%v]\n", err)
 				return
 			}
-			log.Printf("%sgot update\n", n.name)
+			n.logger.Println("got update")
 			// update remaining time to next event
 			// and record index of that event
 			i, d = n.nearestEventTime()
@@ -76,7 +76,10 @@ func (n *tgNotifier) notify() {
 				continue
 			}
 
-			send(n.api, n.chat, buildMessages(n.recs[i])...)
+			if err := send(n.api, n.chat, buildMessages(n.recs[i])...); err != nil {
+				n.logger.SetOutput(os.Stderr)
+				n.logger.Println(err)
+			}
 
 			// dequeue the record we notified about
 			if len(n.recs) > 1 {
@@ -128,11 +131,11 @@ func (n *tgNotifier) todays() error {
 
 func (n *tgNotifier) logNearestEventTime(idx int, nt time.Duration) {
 	if idx < 0 {
-		log.Printf("%sno nearest events; next check in [%s]\n", n.name, nt)
+		n.logger.Printf("no nearest events; next check in [%s]\n", nt)
 		return
 	}
 
-	log.Printf("%snearest event is [%s, %s, %s, %s]; remaining time to notification [%s]\n",
-		n.name, n.recs[idx].RegistryNumber, n.recs[idx].PurchaseType,
+	n.logger.Printf("nearest event is [%s, %s, %s, %s]; remaining time to notification [%s]\n",
+		n.recs[idx].RegistryNumber, n.recs[idx].PurchaseType,
 		n.recs[idx].EtpSql.String, n.recs[idx].BiddingDateTimeSql.Time, nt)
 }

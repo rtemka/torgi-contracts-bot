@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"os"
 
 	botDB "trbot/src/botDB"
 
@@ -69,10 +70,18 @@ func initBot(c *Config) (*bot, error) {
 	// create done channel for notifier
 	done := make(chan struct{})
 
+	// database handler
 	m := botDB.NewModel(c.DB)
-	dh := newDbHandler(c.BotName+": [DB Update Handler]\t->\t", m, dbUpd)
-	uh := newTgUpdHandler(c.BotName+": [Telegram Update Handler]\t->\t", m, botAPI)
-	n := newTgNotifier(c.BotName+": [Notifier]\t->\t", m, botAPI, c.NotifChat, dbUpd, done)
+
+	// database update request handler
+	dhLog := log.New(os.Stdout, c.BotName+": [DB Update Handler]\t->\t", log.LstdFlags|log.Lmsgprefix)
+	dh := newDbHandler(dhLog, m, dbUpd)
+	// telegram update handler
+	uhLog := log.New(os.Stdout, c.BotName+": [Telegram Update Handler]\t->\t", log.LstdFlags|log.Lmsgprefix)
+	uh := newTgUpdHandler(uhLog, m, botAPI)
+	// notifier
+	nLog := log.New(os.Stdout, c.BotName+": [Notifier]\t->\t", log.LstdFlags|log.Lmsgprefix)
+	n := newTgNotifier(nLog, m, botAPI, c.NotifChat, dbUpd, done)
 
 	return &bot{
 		name:  c.BotName,
@@ -94,9 +103,7 @@ func Start(c *Config) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		close(bot.done)
-	}()
+	defer close(bot.done)
 
 	log.Printf("%s: [Telegram]\t->\tAuthorized on account: [%s]\n", bot.name, bot.api.Self.UserName)
 
@@ -160,7 +167,7 @@ func (b *bot) uptimeHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, err := w.Write([]byte{})
 	if err != nil {
-		log.Printf("%s: [Uptime handler]\t->\tuptime checkup failure [%s]\n", b.name, err.Error())
+		log.Printf("%s: [Uptime handler]\t->\tuptime checkup failure [%v]\n", b.name, err)
 		return
 	}
 	log.Printf("%s: [Uptime handler]\t->\tuptime checkup success\n", b.name)

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"trbot/src/botDB"
@@ -99,13 +98,13 @@ type dbQueryManager interface {
 
 // tgUpdHandler processes incoming telegram updates
 type tgUpdHandler struct {
-	name string
-	api  *tgbotapi.BotAPI
-	qm   dbQueryManager
+	logger *log.Logger
+	api    *tgbotapi.BotAPI
+	qm     dbQueryManager
 }
 
-func newTgUpdHandler(name string, qm dbQueryManager, api *tgbotapi.BotAPI) *tgUpdHandler {
-	return &tgUpdHandler{name: name, qm: qm, api: api}
+func newTgUpdHandler(logger *log.Logger, qm dbQueryManager, api *tgbotapi.BotAPI) *tgUpdHandler {
+	return &tgUpdHandler{logger: logger, qm: qm, api: api}
 }
 
 // handleUpdate redirects incoming update to appropriate handler
@@ -113,13 +112,12 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 	if !u.Message.IsCommand() {
 		return
 	}
-	log.SetOutput(os.Stderr)
 
 	// we parse flags from this message as if it was
 	// command line arguments
 	flags, err := parseMsgArgs(u.Message.CommandArguments())
 	if err != nil {
-		log.Printf("%serror due parsing message arguments [%s]\n", t.name, err.Error())
+		t.logger.Printf("error due parsing message arguments [%v]\n", err)
 		send(t.api, u.Message.Chat.ID, errorOptionMsg)
 		return
 	}
@@ -128,7 +126,9 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 	msgs := t.responses(u, flags)
 
 	// sending responses
-	send(t.api, u.Message.Chat.ID, msgs...)
+	if err = send(t.api, u.Message.Chat.ID, msgs...); err != nil {
+		t.logger.Println(err)
+	}
 }
 
 func (t *tgUpdHandler) responses(u *tgbotapi.Update, flags *flags) []string {
@@ -313,7 +313,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 
 	id, err := strconv.ParseInt(f.set.Arg(0), 10, 0)
 	if err != nil {
-		log.Printf("%serror due converting id [%s]\n", t.name, err.Error())
+		t.logger.Printf("error due converting id [%v]\n", err)
 		return []string{errorMsg}
 	}
 
@@ -322,7 +322,7 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 		if err == botDB.ErrNoRows {
 			return []string{notFoundIdMsg}
 		}
-		log.Printf("%serror due fetching record [%s]\n", t.name, err.Error())
+		t.logger.Printf("error due fetching record [%v]\n", err)
 		return []string{errorMsg}
 	}
 
@@ -346,7 +346,7 @@ func (t *tgUpdHandler) query(daysLimit int, opts ...botDB.QueryOpt) []string {
 
 	recs, err := t.qm.Query(daysLimit, opts...) // gets results
 	if err != nil {
-		log.Printf("%serror due fetching records [%s]\n", t.name, err.Error())
+		t.logger.Printf("error due fetching records [%v]\n", err)
 		return []string{errorMsg}
 	}
 
