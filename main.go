@@ -29,7 +29,7 @@ var (
 // getEnvs gets all required environment vars
 func getEnvs() error {
 	appURL = os.Getenv("APP_URL")
-	if port == "" {
+	if appURL == "" {
 		return fmt.Errorf("$APP_URL must be set")
 	}
 	port = os.Getenv("PORT")
