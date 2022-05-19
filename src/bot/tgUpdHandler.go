@@ -118,7 +118,9 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 	flags, err := parseMsgArgs(u.Message.CommandArguments())
 	if err != nil {
 		t.logger.Printf("error due parsing message arguments [%v]\n", err)
-		send(t.api, u.Message.Chat.ID, errorOptionMsg)
+		if err = send(t.api, u.Message.Chat.ID, errorOptionMsg); err != nil {
+			t.logger.Println(err)
+		}
 		return
 	}
 
@@ -149,7 +151,7 @@ func (t *tgUpdHandler) responses(u *tgbotapi.Update, flags *flags) []string {
 	case statusCmd:
 		return []string{statusMsg}
 	case hiCmd:
-		return t.hiCmdResponse(u.Message)
+		return []string{t.hiCmdResponse(u.Message)}
 	case chatCmd:
 		return []string{fmt.Sprint(u.Message.Chat.ID)}
 	default:
@@ -168,11 +170,7 @@ func parseMsgArgs(args string) (*flags, error) {
 	// then we parse flags from this message as if it was
 	// command line arguments
 	// if args is empty we pass a nil slice
-	flags, err := parseFlags(s)
-	if err != nil {
-		return nil, err
-	}
-	return flags, nil
+	return parseFlags(s)
 }
 
 // flags holds flag set and all expected flags
@@ -211,14 +209,14 @@ func parseFlags(args []string) (*flags, error) {
 }
 
 // hiCmdResponse is the '/hi' command handler
-func (t *tgUpdHandler) hiCmdResponse(m *tgbotapi.Message) []string {
-	msg := hiMsg
+func (t *tgUpdHandler) hiCmdResponse(m *tgbotapi.Message) string {
 	if m.From.FirstName != "" {
-		msg = fmt.Sprintf("Привет, %s 👋\n➡️ */help* для справки", m.From.FirstName)
+		return fmt.Sprintf("Привет, %s 👋\n➡️ */help* для справки", m.From.FirstName)
 	} else if m.From.UserName != "" {
-		msg = fmt.Sprintf("Привет, %s 👋\n➡️ */help* для справки", m.From.UserName)
+		return fmt.Sprintf("Привет, %s 👋\n➡️ */help* для справки", m.From.UserName)
+	} else {
+		return "Привет 👋\n➡️ */help* для справки"
 	}
-	return []string{msg}
 }
 
 // unknownArgsErr returns error message when

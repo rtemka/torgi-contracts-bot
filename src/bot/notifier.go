@@ -2,7 +2,6 @@ package bot
 
 import (
 	"log"
-	"os"
 	"time"
 	"trbot/src/botDB"
 
@@ -38,7 +37,6 @@ func newTgNotifier(logger *log.Logger, qm dbQueryManager,
 func (n *tgNotifier) notify() {
 	// set today's records
 	if err := n.todays(); err != nil {
-		n.logger.SetOutput(os.Stderr)
 		n.logger.Printf("error due fetching records: [%v]\n", err)
 		return
 	}
@@ -59,7 +57,6 @@ func (n *tgNotifier) notify() {
 		case <-n.upd:
 			// update records
 			if err := n.todays(); err != nil {
-				n.logger.SetOutput(os.Stderr)
 				n.logger.Printf("error due fetching records: [%v]\n", err)
 				return
 			}
@@ -77,7 +74,6 @@ func (n *tgNotifier) notify() {
 			}
 
 			if err := send(n.api, n.chat, buildMessages(n.recs[i])...); err != nil {
-				n.logger.SetOutput(os.Stderr)
 				n.logger.Println(err)
 			}
 

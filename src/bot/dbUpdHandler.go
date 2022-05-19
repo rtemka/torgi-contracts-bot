@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -37,20 +36,27 @@ func newDbHandler(logger *log.Logger, m dbManager, upd chan<- struct{}) *dbHandl
 }
 
 func (d dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_ = r.Body.Close()
+	}()
 
 	// check if request has json body
 	headerContentType := r.Header.Get("Content-Type")
 	if headerContentType != "application/json" {
-		writeResponse(w, "Content Type is not application/json", http.StatusUnsupportedMediaType)
+		if err := writeResponse(w, "Content-Type is not application/json", http.StatusUnsupportedMediaType); err != nil {
+			d.logger.Printf("error due writing response [%v]\n", err)
+		}
 		return
 	}
 
 	// pass body to database handler
 	err := d.dbManager.Upsert(r.Body)
 	if err != nil {
-		d.logger.SetOutput(os.Stderr)
 		d.logger.Printf("error due updating records [%v]\n", err)
-		writeResponse(w, dbUpdateFailure, http.StatusInternalServerError)
+		if err := writeResponse(w, dbUpdateFailure, http.StatusInternalServerError); err != nil {
+			d.logger.Printf("error due writing response [%v]\n", err)
+		}
 		return
 	}
 
@@ -66,14 +72,20 @@ func (d dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	writeResponse(w, dbUpdateSuccess, http.StatusOK)
+	if err = writeResponse(w, dbUpdateSuccess, http.StatusOK); err != nil {
+		d.logger.Printf("error due writing response [%v]\n", err)
+	}
 }
 
-func writeResponse(w http.ResponseWriter, message string, httpStatusCode int) {
+func writeResponse(w http.ResponseWriter, message string, httpStatusCode int) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatusCode)
 	resp := make(map[string]string)
 	resp["response"] = message
-	jsonResp, _ := json.Marshal(resp)
-	w.Write(jsonResp)
+	jsonResp, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(jsonResp)
+	return err
 }

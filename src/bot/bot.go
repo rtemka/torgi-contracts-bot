@@ -2,6 +2,7 @@ package bot
 
 import (
 	"database/sql"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -74,13 +75,13 @@ func initBot(c *Config) (*bot, error) {
 	m := botDB.NewModel(c.DB)
 
 	// database update request handler
-	dhLog := log.New(os.Stdout, c.BotName+": [DB Update Handler]\t->\t", log.LstdFlags|log.Lmsgprefix)
+	dhLog := log.New(os.Stderr, c.BotName+": [DB Update Handler]\t->\t", log.LstdFlags|log.Lmsgprefix)
 	dh := newDbHandler(dhLog, m, dbUpd)
 	// telegram update handler
-	uhLog := log.New(os.Stdout, c.BotName+": [Telegram Update Handler]\t->\t", log.LstdFlags|log.Lmsgprefix)
+	uhLog := log.New(os.Stderr, c.BotName+": [Telegram Update Handler]\t->\t", log.LstdFlags|log.Lmsgprefix)
 	uh := newTgUpdHandler(uhLog, m, botAPI)
 	// notifier
-	nLog := log.New(os.Stdout, c.BotName+": [Notifier]\t->\t", log.LstdFlags|log.Lmsgprefix)
+	nLog := log.New(os.Stderr, c.BotName+": [Notifier]\t->\t", log.LstdFlags|log.Lmsgprefix)
 	n := newTgNotifier(nLog, m, botAPI, c.NotifChat, dbUpd, done)
 
 	return &bot{
@@ -163,12 +164,13 @@ func (bot *bot) checkWebhook(c *Config) (string, error) {
 // uptimeHandler recieves uptime call from external resource
 // such as https://uptimerobot.com/ to keep application alive,
 // because heroku will force app to sleep when it's idling
-func (b *bot) uptimeHandler(w http.ResponseWriter, _ *http.Request) {
+func (b *bot) uptimeHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_ = r.Body.Close()
+	}()
+
 	w.WriteHeader(http.StatusOK)
-	_, err := w.Write([]byte{})
-	if err != nil {
-		log.Printf("%s: [Uptime handler]\t->\tuptime checkup failure [%v]\n", b.name, err)
-		return
-	}
+
 	log.Printf("%s: [Uptime handler]\t->\tuptime checkup success\n", b.name)
 }
