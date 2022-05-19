@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -148,12 +149,7 @@ func (m *Model) upsrt() error {
 		return err
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return tx.Commit()
 }
 
 func (m *Model) setForeignKeys(p *PurchaseRecord) error {
@@ -270,14 +266,10 @@ func (m *Model) updateRefMap(um map[string]string) error {
 		// get the table
 		t := m.tk.table(k)
 
-		q := fmt.Sprintf("insert into %s (%s) values ($1);", t.name(), t.nameKeyCol())
+		q := fmt.Sprintf("insert into %s (%s) values ($1) returning %s;",
+			t.name(), t.nameKeyCol(), t.primaryKeyCol(primaryKey))
 
-		res, err := tx.Exec(q, v)
-		if err != nil {
-			return err
-		}
-
-		id, err = res.LastInsertId()
+		err := tx.QueryRow(q, v).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -286,12 +278,7 @@ func (m *Model) updateRefMap(um map[string]string) error {
 		m.refMap[t.name()][t.nameKeyCol()] = id
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return tx.Commit()
 }
 
 // Delete is for removing old records from DB only.
@@ -312,12 +299,7 @@ func (m *Model) Delete() error {
 		return err
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return tx.Commit()
 }
 
 // Query performs select operations from
@@ -462,10 +444,11 @@ func (q QueryOpt) whereClause(daysLimit int) string {
 	switch q {
 
 	case Today:
+		pd := plusDays(time.Now().Weekday())
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
 		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = current_date::timestamp)", biddingColumn))
 		b.WriteString(fmt.Sprintf("  or (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
-		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = (current_date+1)::timestamp)", collectingColumn))
+		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = (current_date+%d)::timestamp)", collectingColumn, pd))
 
 	case Future:
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
@@ -492,8 +475,9 @@ func (q QueryOpt) whereClause(daysLimit int) string {
 		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = current_date::timestamp)", biddingColumn))
 
 	case TodayGo:
+		pd := plusDays(time.Now().Weekday())
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusGo, statusEstim))
-		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = (current_date+1)::timestamp)", collectingColumn))
+		b.WriteString(fmt.Sprintf(" and date_trunc('day', %s) = (current_date+%d)::timestamp)", collectingColumn, pd))
 
 	case FutureAuction:
 		b.WriteString(fmt.Sprintf("where (%s in ('%s', '%s')", statusName, statusAuction, statusAuction2))
@@ -521,4 +505,18 @@ func (q QueryOpt) whereClause(daysLimit int) string {
 	}
 
 	return b.String()
+}
+
+// plusDays returns amount of days that
+// need to be added to provided weekday to get next
+// workday
+func plusDays(d time.Weekday) int {
+	switch d {
+	case time.Friday:
+		return 3
+	case time.Saturday:
+		return 2
+	default:
+		return 1
+	}
 }
