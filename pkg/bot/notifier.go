@@ -2,8 +2,8 @@ package bot
 
 import (
 	"log"
+	botDB "tbot/pkg/db"
 	"time"
-	"trbot/src/botDB"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )

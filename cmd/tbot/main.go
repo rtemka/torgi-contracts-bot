@@ -6,8 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	trbot "trbot/src/bot"
-	botDB "trbot/src/botDB"
+	"tbot/pkg/bot"
+	botDB "tbot/pkg/db"
 )
 
 const (
@@ -116,7 +116,7 @@ func main() {
 	}
 
 	// set up configuration for the bot
-	c := trbot.Config{
+	c := bot.Config{
 		BotName:       botName,
 		Port:          port,
 		AppURL:        appURL,
@@ -128,7 +128,7 @@ func main() {
 		UptimeToken:   uptimeToken,
 	}
 
-	err = trbot.Start(&c)
+	err = bot.Start(&c)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -3,7 +3,7 @@ package bot
 import (
 	"fmt"
 	"strings"
-	botDB "trbot/src/botDB"
+	botDB "tbot/pkg/db"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
