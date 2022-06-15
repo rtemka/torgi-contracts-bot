@@ -22,7 +22,8 @@ func send(api *tgbotapi.BotAPI, chatID int64, msgs ...string) error {
 	for i := range msgs {
 		m.Text = msgs[i]
 		if _, err := api.Send(m); err != nil {
-			return fmt.Errorf("error due sending response [%v]", err)
+			return fmt.Errorf("due sending response: chat [%d]; msg [%v]; [%v]",
+				chatID, msgs[i], err)
 		}
 	}
 	return nil
