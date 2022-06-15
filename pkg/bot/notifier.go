@@ -28,8 +28,16 @@ type tgNotifier struct {
 }
 
 func newTgNotifier(logger *log.Logger, qm dbQueryManager,
-	api *tgbotapi.BotAPI, chat int64, upd <-chan struct{}, done <-chan struct{}) *tgNotifier {
-	return &tgNotifier{logger: logger, qm: qm, api: api, recs: nil, chat: chat, upd: upd, done: done}
+	api *tgbotapi.BotAPI, chat int64, upd <-chan struct{},
+	done <-chan struct{}) *tgNotifier {
+	return &tgNotifier{logger: logger,
+		qm:   qm,
+		api:  api,
+		recs: nil,
+		chat: chat,
+		upd:  upd,
+		done: done,
+	}
 }
 
 // notify will send notification to specified telegram chat
