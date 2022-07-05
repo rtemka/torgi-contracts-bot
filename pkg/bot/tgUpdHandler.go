@@ -23,6 +23,7 @@ const (
 	errorOptionMsg = "Неправильная опция команды\n" + `➡️ */help* \-\[*_имя команды_*\]` +
 		"\nдля справки по команде"
 	notFoundIdMsg = "Не нашел ничего по заданному id"
+	notAllowedMsg = "Извини, не отвечаю тем, кого не знаю"
 )
 
 // command help message
@@ -89,9 +90,9 @@ const (
 	daysKeyUsg    = "ограничивает выборку на NUM дней"
 )
 
-// dbQueryManager is responsible
+// querier is responsible
 // for the retrieving info from database
-type dbQueryManager interface {
+type querier interface {
 	Query(int, ...botDB.QueryOpt) ([]botDB.PurchaseRecord, error)
 	QueryRow(int64) (botDB.PurchaseRecord, error)
 }
@@ -100,11 +101,18 @@ type dbQueryManager interface {
 type tgUpdHandler struct {
 	logger *log.Logger
 	api    *tgbotapi.BotAPI
-	qm     dbQueryManager
+	q      querier
+	chats  map[int64]bool
 }
 
-func newTgUpdHandler(logger *log.Logger, qm dbQueryManager, api *tgbotapi.BotAPI) *tgUpdHandler {
-	return &tgUpdHandler{logger: logger, qm: qm, api: api}
+func newTgUpdHandler(logger *log.Logger, q querier,
+	api *tgbotapi.BotAPI, allowedChats map[int64]bool) *tgUpdHandler {
+	return &tgUpdHandler{
+		logger: logger,
+		q:      q,
+		api:    api,
+		chats:  allowedChats,
+	}
 }
 
 // handleUpdate redirects incoming update to appropriate handler
@@ -113,11 +121,24 @@ func (t *tgUpdHandler) handleUpdate(u *tgbotapi.Update) {
 		return
 	}
 
+	// restricted access
+	if !t.chats[u.Message.Chat.ID] {
+		t.logger.Printf("[Telegram] -> [chatID=%d from=%v; restricted access]",
+			u.Message.Chat.ID, u.Message.From)
+		if err := send(t.api, u.Message.Chat.ID, t.notAllowed(u.Message)); err != nil {
+			t.logger.Println(err)
+		}
+		return
+	}
+
+	log.Printf("[Telegram] -> [received: chatID=%d from=%v text=%s]",
+		u.Message.Chat.ID, u.Message.From, u.Message.Text)
+
 	// we parse flags from this message as if it was
 	// command line arguments
 	flags, err := parseMsgArgs(u.Message.CommandArguments())
 	if err != nil {
-		t.logger.Printf("error due parsing message arguments [%v]\n", err)
+		t.logger.Printf("[Telegram] -> [due parsing message arguments %v]", err)
 		if err = send(t.api, u.Message.Chat.ID, errorOptionMsg); err != nil {
 			t.logger.Println(err)
 		}
@@ -219,6 +240,17 @@ func (t *tgUpdHandler) hiCmdResponse(m *tgbotapi.Message) string {
 	}
 }
 
+// notAllowed is response for unauthorized request
+func (t *tgUpdHandler) notAllowed(m *tgbotapi.Message) string {
+	if m.From.FirstName != "" {
+		return fmt.Sprintf("Привет, %s 👋\n%s", m.From.FirstName, notAllowedMsg)
+	} else if m.From.UserName != "" {
+		return fmt.Sprintf("Привет, %s 👋\n%s", m.From.UserName, notAllowedMsg)
+	} else {
+		return notAllowedMsg
+	}
+}
+
 // unknownArgsErr returns error message when
 // input arguments contains some garbage leftovers
 func unknownArgsErr(f *flags) []string {
@@ -311,16 +343,16 @@ func (t *tgUpdHandler) infoCmdResponse(f *flags) []string {
 
 	id, err := strconv.ParseInt(f.set.Arg(0), 10, 0)
 	if err != nil {
-		t.logger.Printf("error due converting id [%v]\n", err)
+		t.logger.Printf("[Telegram] -> [due converting id %v]", err)
 		return []string{errorMsg}
 	}
 
-	p, err := t.qm.QueryRow(id)
+	p, err := t.q.QueryRow(id)
 	if err != nil {
 		if err == botDB.ErrNoRows {
 			return []string{notFoundIdMsg}
 		}
-		t.logger.Printf("error due fetching record [%v]\n", err)
+		t.logger.Printf("[Telegram] -> [due fetching record %v]", err)
 		return []string{errorMsg}
 	}
 
@@ -342,9 +374,9 @@ func (t *tgUpdHandler) pastCmdResponse(f *flags) []string {
 // passes results to the message builder
 func (t *tgUpdHandler) query(daysLimit int, opts ...botDB.QueryOpt) []string {
 
-	recs, err := t.qm.Query(daysLimit, opts...) // gets results
+	recs, err := t.q.Query(daysLimit, opts...) // gets results
 	if err != nil {
-		t.logger.Printf("error due fetching records [%v]\n", err)
+		t.logger.Printf("[Telegram] -> [due fetching records %v]", err)
 		return []string{errorMsg}
 	}
 
