@@ -19,24 +19,21 @@ const idlingDuration = time.Hour * 24
 // tgNotifier holds the notification logic
 type tgNotifier struct {
 	logger *log.Logger
-	qm     dbQueryManager
+	q      querier
 	api    *tgbotapi.BotAPI
 	recs   []botDB.PurchaseRecord
 	chat   int64
 	upd    <-chan struct{}
-	done   <-chan struct{}
 }
 
-func newTgNotifier(logger *log.Logger, qm dbQueryManager,
-	api *tgbotapi.BotAPI, chat int64, upd <-chan struct{},
-	done <-chan struct{}) *tgNotifier {
+func newTgNotifier(logger *log.Logger, q querier,
+	api *tgbotapi.BotAPI, chat int64, upd <-chan struct{}) *tgNotifier {
 	return &tgNotifier{logger: logger,
-		qm:   qm,
+		q:    q,
 		api:  api,
 		recs: nil,
 		chat: chat,
 		upd:  upd,
-		done: done,
 	}
 }
 
@@ -45,7 +42,7 @@ func newTgNotifier(logger *log.Logger, qm dbQueryManager,
 func (n *tgNotifier) notify() {
 	// set today's records
 	if err := n.todays(); err != nil {
-		n.logger.Printf("error due fetching records: [%v]\n", err)
+		n.logger.Printf("[Notifier] -> [error due fetching records: %v]", err)
 		return
 	}
 
@@ -56,19 +53,16 @@ func (n *tgNotifier) notify() {
 
 	for {
 		select {
-		case <-n.done:
-			return
-
 		// if databse was updated we need to
 		// update notifier records and
 		// remaining time to next event
 		case <-n.upd:
 			// update records
 			if err := n.todays(); err != nil {
-				n.logger.Printf("error due fetching records: [%v]\n", err)
+				n.logger.Printf("[Notifier] -> [error due fetching records: %v]", err)
 				return
 			}
-			n.logger.Println("got update")
+			n.logger.Println("[Notifier] -> [got update]")
 			// update remaining time to next event
 			// and record index of that event
 			i, d = n.nearestEventTime()
@@ -125,7 +119,7 @@ func (n *tgNotifier) nearestEventTime() (int, time.Duration) {
 // The db returns records in asc order
 func (n *tgNotifier) todays() error {
 	var err error
-	n.recs, err = n.qm.Query(0, botDB.TodayAuction)
+	n.recs, err = n.q.Query(0, botDB.TodayAuction)
 	if err != nil {
 		return err
 	}
@@ -135,11 +129,11 @@ func (n *tgNotifier) todays() error {
 
 func (n *tgNotifier) logNearestEventTime(idx int, nt time.Duration) {
 	if idx < 0 {
-		n.logger.Printf("no nearest events; next check in [%s]\n", nt)
+		n.logger.Printf("[Notifier] -> [no nearest events; next check in %s]", nt)
 		return
 	}
 
-	n.logger.Printf("nearest event is [%s, %s, %s, %s]; remaining time to notification [%s]\n",
+	n.logger.Printf("[Notifier] -> [nearest event is |%s, %s, %s, %s|; remaining time to notification %s]",
 		n.recs[idx].RegistryNumber, n.recs[idx].PurchaseType,
 		n.recs[idx].EtpSql.String, n.recs[idx].BiddingDateTimeSql.Time, nt)
 }
