@@ -13,23 +13,40 @@ import (
 
 var ErrNoRows = sql.ErrNoRows
 
-// Model responsible for database management
-type Model struct {
+// BotDB responsible for database management
+type BotDB struct {
 	db      *sql.DB
 	records []PurchaseRecord
 	tk      tablesKeeper
 	refMap  refTablesMap
 }
 
-// NewModel is database model manager constructor.
+// NewBotDB is database BotDB manager constructor.
 // Expects established database connection
-func NewModel(db *sql.DB) *Model {
-	return &Model{
+func NewBotDB(db *sql.DB) *BotDB {
+	return &BotDB{
 		db:      db,
 		records: nil,
 		tk:      newTables(),
 		refMap:  nil,
 	}
+}
+
+// botDbError represents information
+// about error condition due working
+// with bot database
+type botDbError struct {
+	Context string
+	Err     error
+}
+
+func (be *botDbError) Error() string {
+	return fmt.Sprintf("%s: %v", be.Context, be.Err)
+}
+
+func newBotDbError(operation, stmt string, err error, args ...any) *botDbError {
+	ctx := fmt.Sprintf("op=%s stmt=%s args=%v", operation, stmt, args)
+	return &botDbError{Context: ctx, Err: err}
 }
 
 // tablesKeeper provides information about available DB tables
@@ -66,10 +83,10 @@ func OpenDB(DbParams string) (*sql.DB, error) {
 
 // Upsert reading from incoming update source
 // and try to perform an insert/update operation
-func (m *Model) Upsert(rc io.ReadCloser) error {
+func (m *BotDB) Upsert(rc io.ReadCloser) error {
 
 	// unmarshalling incoming data
-	// and put them inside Model
+	// and put them inside BotDB
 	err := json.NewDecoder(rc).Decode(&m.records)
 	if err != nil {
 		return err
@@ -83,8 +100,7 @@ func (m *Model) Upsert(rc io.ReadCloser) error {
 	}()
 
 	if len(m.records) == 0 {
-		return fmt.Errorf(
-			"error while processing database update: the length of incoming records is zero")
+		return fmt.Errorf("the length of incoming records is zero")
 	}
 
 	// work to be done before updating
@@ -95,9 +111,9 @@ func (m *Model) Upsert(rc io.ReadCloser) error {
 	return m.upsrt()
 }
 
-// prepareUpdate sets up a reference map for Model,
+// prepareUpdate sets up a reference map for BotDB,
 // foreign keys for the record
-func (m *Model) prepareUpdate() error {
+func (m *BotDB) prepareUpdate() error {
 	// setting up reference tables map
 	err := m.setRefMaps()
 	if err != nil {
@@ -115,7 +131,7 @@ func (m *Model) prepareUpdate() error {
 }
 
 // core upsert operation
-func (m *Model) upsrt() error {
+func (m *BotDB) upsrt() error {
 	// get main table
 	t := m.tk.table(purchTableName)
 
@@ -146,13 +162,13 @@ func (m *Model) upsrt() error {
 
 	_, err = tx.Exec(stmt, args...)
 	if err != nil {
-		return err
+		return newBotDbError("BotDB: upsrt", stmt, err, args...)
 	}
 
 	return tx.Commit()
 }
 
-func (m *Model) setForeignKeys(p *PurchaseRecord) error {
+func (m *BotDB) setForeignKeys(p *PurchaseRecord) error {
 
 	// gives the record reference table map
 	// to set foreign keys fields
@@ -176,10 +192,10 @@ func (m *Model) setForeignKeys(p *PurchaseRecord) error {
 	return m.setForeignKeys(p)
 }
 
-// buildArgs takes every record in a Model,
+// buildArgs takes every record in a BotDB,
 // build arguments for each and then append them to
 // one big arguments slice
-func (m *Model) buildArgs() []interface{} {
+func (m *BotDB) buildArgs() []interface{} {
 
 	args := make([]interface{}, 0, len(m.records)*(purchTableColsCount-1))
 
@@ -192,27 +208,27 @@ func (m *Model) buildArgs() []interface{} {
 
 // setRefMaps builds a map of tables
 // that our main table is referecing at
-func (m *Model) setRefMaps() error {
+func (m *BotDB) setRefMaps() error {
 
 	// get tables that our main table is referecing at
 	refTables := m.tk.table(purchTableName).refTables()
 
-	// plug them in to the Model
+	// plug them in to the BotDB
 	m.refMap = make(refTablesMap, len(refTables))
 
 	// fill them with data
 	for i := range refTables {
 		err := m.fillMap(refTables[i])
 		if err != nil {
-			return err
+			return newBotDbError("BotDB: setRefMaps", "", err)
 		}
 	}
 
 	return nil
 }
 
-// fills the models refMap with provided table data
-func (m *Model) fillMap(t table) error {
+// fills the BotDBs refMap with provided table data
+func (m *BotDB) fillMap(t table) error {
 	var (
 		id   int64
 		name string
@@ -223,7 +239,7 @@ func (m *Model) fillMap(t table) error {
 
 	rows, err := m.db.Query(q)
 	if err != nil {
-		return err
+		return newBotDbError("BotDB: fillMap: Query", q, err)
 	}
 
 	defer rows.Close()
@@ -233,24 +249,18 @@ func (m *Model) fillMap(t table) error {
 	for rows.Next() {
 		err := rows.Scan(&id, &name)
 		if err != nil {
-			return err
+			return newBotDbError("BotDB: fillMap: Scan", q, err)
 		}
 		m.refMap[t.name()][name] = id
 	}
 
-	if err = rows.Err(); err != nil {
-		return err
-	}
-
-	rows.Close()
-
-	return nil
+	return rows.Err()
 }
 
 // updateRefMap executes when incoming records comes with
 // new data for the referencing tables.
-// It updates DB and then Model internal refMap with that data
-func (m *Model) updateRefMap(um map[string]string) error {
+// It updates DB and then BotDB internal refMap with that data
+func (m *BotDB) updateRefMap(um map[string]string) error {
 
 	var id int64
 
@@ -271,7 +281,7 @@ func (m *Model) updateRefMap(um map[string]string) error {
 
 		err := tx.QueryRow(q, v).Scan(&id)
 		if err != nil {
-			return err
+			return newBotDbError("BotDB: updateRefMap", q, err, v)
 		}
 
 		// plug inserted id in refMap
@@ -285,7 +295,7 @@ func (m *Model) updateRefMap(um map[string]string) error {
 // This should be done from time to time so that the database
 // does not grow in size too much due to restrictions of heroku platform.
 // No functionality beyond that is provided.
-func (m *Model) Delete() error {
+func (m *BotDB) Delete(_ io.ReadCloser) error {
 
 	tx, err := m.db.Begin()
 	if err != nil {
@@ -296,7 +306,7 @@ func (m *Model) Delete() error {
 
 	_, err = tx.Exec(purchDeleteStatement)
 	if err != nil {
-		return err
+		return newBotDbError("BotDB: Delete", purchDeleteStatement, err)
 	}
 
 	return tx.Commit()
@@ -304,7 +314,7 @@ func (m *Model) Delete() error {
 
 // Query performs select operations from
 // database based on provided query options
-func (m *Model) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error) {
+func (m *BotDB) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error) {
 
 	var recs []PurchaseRecord
 	var r PurchaseRecord
@@ -319,7 +329,7 @@ func (m *Model) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error
 		stmt := selectWhereStmt(opts)    // build statement
 		rows, err := m.db.Query(stmt)
 		if err != nil {
-			return nil, err
+			return nil, newBotDbError("BotDB: Query", stmt, err)
 		}
 
 		defer rows.Close()
@@ -327,12 +337,12 @@ func (m *Model) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error
 		for rows.Next() {
 			err := rows.Scan(r.args(q.tableOpt())...)
 			if err != nil {
-				return nil, err
+				return nil, newBotDbError("BotDB: Query Scan", "", err, r.args(q.tableOpt())...)
 			}
 			// we add specific query option to the record
 			// this needed for the record to properly
 			// build string info about itself
-			r.queryOpt = q
+			r.QueryType = q
 			recs = append(recs, r)
 		}
 
@@ -347,7 +357,7 @@ func (m *Model) Query(daysLimit int, qopts ...QueryOpt) ([]PurchaseRecord, error
 }
 
 // QueryRow looks for one specific row by id
-func (m *Model) QueryRow(id int64) (PurchaseRecord, error) {
+func (m *BotDB) QueryRow(id int64) (PurchaseRecord, error) {
 	var r PurchaseRecord
 	if id == 0 {
 		return r, fmt.Errorf("invalid identifier %d", id)
@@ -369,13 +379,13 @@ func (m *Model) QueryRow(id int64) (PurchaseRecord, error) {
 		if err == sql.ErrNoRows {
 			return r, ErrNoRows
 		}
-		return r, err
+		return r, newBotDbError("BotDB: QueryRow", stmt, err, r.args(query)...)
 	}
 
 	// we add specific query option to the record
 	// this needed for the record to properly
 	// build string info about itself
-	r.queryOpt = General
+	r.QueryType = General
 
 	return r, nil
 }
