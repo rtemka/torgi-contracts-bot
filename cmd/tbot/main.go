@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"tbot/pkg/bot"
 	botDB "tbot/pkg/db"
+	"time"
 )
 
 const (
@@ -96,13 +98,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// establish database connection
-	db, err := botDB.OpenDB(dbParams)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
 	// parse allowed chats from environment
 	validChats, err := parseValidChats(chats)
 	if err != nil {
@@ -115,21 +110,41 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// establish database connection
+	db, err := botDB.OpenDB(dbParams)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
 	// set up configuration for the bot
 	c := bot.Config{
-		BotName:       botName,
-		Port:          port,
-		AppURL:        appURL,
-		BotToken:      botToken,
-		DbUpdateToken: dbUpdateToken,
-		DB:            db,
-		Chats:         validChats,
-		NotifChat:     nChat,
-		UptimeToken:   uptimeToken,
+		BotName:          botName,
+		AppURL:           appURL,
+		BotToken:         botToken,
+		DbUpdateToken:    dbUpdateToken,
+		UptimeToken:      uptimeToken,
+		DB:               db,
+		AllowedChats:     validChats,
+		NotificationChat: nChat,
 	}
 
-	err = bot.Start(&c)
+	botApi, err := bot.New(&c)
 	if err != nil {
+		db.Close()
+		log.Fatal(err)
+	}
+
+	// server config
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           botApi.Router(),
+		IdleTimeout:       time.Minute,
+		ReadHeaderTimeout: time.Minute,
+	}
+
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+		db.Close()
 		log.Fatal(err)
 	}
 }
