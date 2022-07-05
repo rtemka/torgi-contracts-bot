@@ -2,117 +2,98 @@ package bot
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"tbot/pkg/bot/memdb"
 	"testing"
 	"time"
 )
 
-var mockErr = fmt.Errorf("intentional error")
-
-type dbManagerMock struct{ needErr bool }
-
-func (d dbManagerMock) Upsert(_ io.ReadCloser) error {
-	if d.needErr {
-		return mockErr
-	}
-	return nil
-}
-
-func (d dbManagerMock) Delete() error { return nil }
-
-func TestDbUpdHandlerServeHTTP(t *testing.T) {
+func TestBot_dbUpdateHandler(t *testing.T) {
 
 	// set up database update handler
 	// with mocked database handler
-	dbm := dbManagerMock{needErr: false}
+	dbm := memdb.New(false)
 	upd := make(chan struct{})
 	defer close(upd)
 	logger := log.New(io.Discard, "", 0)
-	dbh := newDbHandler(logger, dbm, upd)
+	tb := Bot{
+		db:     dbm,
+		logger: logger,
+		dbUpd:  upd,
+	}
 
-	// set up fake request
-	req := httptest.NewRequest(http.MethodPost, "http://example.com/", nil)
+	timeout := 1000 * time.Millisecond
+	h := tb.headersMiddleware(tb.enforceJsonMiddleware(tb.dbUpdateHandler(timeout)))
+	req := httptest.NewRequest(http.MethodPost, "http://test.com/", nil)
 	req.Header["Content-Type"] = []string{"application/json"}
 
 	t.Run("good_request", func(t *testing.T) {
 
 		w := httptest.NewRecorder()
-		dbh.ServeHTTP(w, req)
+		h.ServeHTTP(w, req)
 
 		select {
 		case <-upd:
-		case <-time.After(time.Second * 10):
-			t.Fatal("expected to receive update message, got nothing")
+		case <-time.After(timeout):
+			t.Fatal("Bot.dbUpdateHandler() expected to receive update msg, got nothing")
 		}
 
 		resp := w.Result()
 
-		assertStatusCode(http.StatusOK, resp.StatusCode, t)
-		assertMediaType(resp.Header.Get("Content-Type"), t)
+		assert("Bot.dbUpdateHandler()", resp.StatusCode, http.StatusOK, t)
+		assert("Bot.dbUpdateHandler()", resp.Header.Get("Content-Type"), "application/json", t)
 
-		r := decodeResponse(resp.Body, t)
+		r := decodeResponse("Bot.dbUpdateHandler()", resp.Body, t)
 
-		if r["response"] != dbUpdateSuccess {
-			t.Fatalf("expected to receive [%s], got [%s]", dbUpdateSuccess, r["response"])
-		}
+		assert("Bot.dbUpdateHandler()", r["response"], dbUpdateSuccess, t)
 	})
 
 	t.Run("bad_request_db", func(t *testing.T) {
 
 		// this time we expect error
-		dbh.dbManager = dbManagerMock{needErr: true}
+		tb.db = memdb.New(true)
 
 		w := httptest.NewRecorder()
-		dbh.ServeHTTP(w, req)
+		h.ServeHTTP(w, req)
 
 		resp := w.Result()
 
-		assertStatusCode(http.StatusInternalServerError, resp.StatusCode, t)
-		assertMediaType(resp.Header.Get("Content-Type"), t)
+		assert("Bot.dbUpdateHandler()", resp.StatusCode, http.StatusInternalServerError, t)
+		assert("Bot.dbUpdateHandler()", resp.Header.Get("Content-Type"), "application/json", t)
 
-		r := decodeResponse(resp.Body, t)
+		r := decodeResponse("Bot.dbUpdateHandler()", resp.Body, t)
 
-		if r["response"] != dbUpdateFailure {
-			t.Fatalf("expected to receive [%s], got [%s]", dbUpdateFailure, r["response"])
-		}
+		assert("Bot.dbUpdateHandler()", r["response"], dbUpdateFailure, t)
 	})
 
 	t.Run("bad_request_media", func(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "http://example.com/", nil)
 		// set up a wrong media type
-		req.Header["Content-Type"] = []string{"bad/media"}
+		req.Header["Content-Type"] = []string{"bad/mediatype"}
 		w := httptest.NewRecorder()
 
-		dbh.ServeHTTP(w, req)
+		h.ServeHTTP(w, req)
 
 		resp := w.Result()
-
-		assertStatusCode(http.StatusUnsupportedMediaType, resp.StatusCode, t)
+		assert("Bot.dbUpdateHandler()", resp.StatusCode, http.StatusUnsupportedMediaType, t)
 	})
 }
 
-func assertStatusCode(expected, got int, t *testing.T) {
-	if expected != got {
-		t.Fatalf("expected to receive status code [%d], got [%d]", expected, got)
+func assert[T comparable](op string, got T, want T, t *testing.T) {
+	if got != want {
+		t.Fatalf("%s got=%v, want=%v", op, got, want)
 	}
 }
 
-func assertMediaType(ct string, t *testing.T) {
-	if ct != "application/json" {
-		t.Fatalf("expected to receive application/json Content-Type, got [%v]", ct)
-	}
-}
-
-func decodeResponse(body io.ReadCloser, t *testing.T) map[string]string {
+func decodeResponse(op string, body io.ReadCloser, t *testing.T) map[string]string {
 	r := make(map[string]string)
 	err := json.NewDecoder(body).Decode(&r)
 	if err != nil {
-		t.Fatalf("due reading response body [%v]", err)
+		t.Fatalf("%s error=%v", op, err)
 	}
 	return r
 }
