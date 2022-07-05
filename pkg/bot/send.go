@@ -22,7 +22,7 @@ func send(api *tgbotapi.BotAPI, chatID int64, msgs ...string) error {
 	for i := range msgs {
 		m.Text = msgs[i]
 		if _, err := api.Send(m); err != nil {
-			return fmt.Errorf("due sending response: chat [%d]; msg [%v]; [%v]",
+			return fmt.Errorf("[Telegram] -> [due sending response: chat=%d; msg=%v; err=%v]",
 				chatID, msgs[i], err)
 		}
 	}
