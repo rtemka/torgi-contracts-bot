@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"tbot/pkg/bot/memdb"
+	"tbot/pkg/db/memdb"
 	"testing"
 	"time"
 )

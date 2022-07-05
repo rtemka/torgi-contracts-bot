@@ -1,8 +1,8 @@
 package bot
 
 import (
-	"tbot/pkg/bot/memdb"
 	botDB "tbot/pkg/db"
+	"tbot/pkg/db/memdb"
 	"testing"
 )
 
