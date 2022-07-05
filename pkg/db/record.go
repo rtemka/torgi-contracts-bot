@@ -58,19 +58,19 @@ type PurchaseRecord struct {
 	WinnerPriceSql          sql.NullFloat64 `json:"-"`
 	Participants            string          `json:"participants,omitempty"`
 	ParticipantsSql         sql.NullString  `json:"-"`
-	queryOpt                QueryOpt        `json:"-"`
+	QueryType               QueryOpt        `json:"-"` // how this record was queried
 }
 
 // Info returns string representation of record
 func (p *PurchaseRecord) Info() (string, QueryOpt) {
 
-	switch p.queryOpt {
+	switch p.QueryType {
 
 	case TodayAuction:
-		return p.auctionString(), p.queryOpt
+		return p.auctionString(), p.QueryType
 
 	case Future, FutureAuction, TodayGo, FutureGo:
-		return p.participateString(), p.queryOpt
+		return p.participateString(), p.QueryType
 
 	case Today:
 		if p.StatusSql.String == statusGo || p.StatusSql.String == statusEstim {
@@ -79,13 +79,13 @@ func (p *PurchaseRecord) Info() (string, QueryOpt) {
 		return p.auctionString(), TodayAuction
 
 	case FutureMoney:
-		return p.moneyString(), p.queryOpt
+		return p.moneyString(), p.QueryType
 
 	case Past:
-		return p.pastString(), p.queryOpt
+		return p.pastString(), p.QueryType
 
 	default:
-		return p.generalString(), p.queryOpt
+		return p.generalString(), p.QueryType
 
 	}
 
