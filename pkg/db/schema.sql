@@ -1,5 +1,5 @@
 
-CREATE DATABASE purchase_registry WITH ENCODING 'UTF8' LC_COLLATE='ru_RU.UTF-8' LC_CTYPE='ru_RU.UTF-8' TEMPLATE=template0;
+DROP TABLE IF NOT EXISTS customer_types, purchase_types, regions, etp, statuses, purchase_string_codes, purchase_registry;
 
 CREATE TABLE IF NOT EXISTS customer_types (
 	customer_type_id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
